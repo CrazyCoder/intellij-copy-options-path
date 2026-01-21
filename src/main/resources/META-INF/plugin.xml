@@ -1,16 +1,21 @@
 <idea-plugin>
   <id>com.intellij.plugin.copy.options</id>
   <name>Copy Option Path</name>
-  <vendor email="andrey.dernov@gmail.com" url="https://twitter.com/ant_druha">andrey</vendor>
+  <vendor email="sbaranov@gmail.com" url="https://github.com/CrazyCoder">Serge Baranov</vendor>
 
   <description><![CDATA[
-    Adds 'Copy Option Path' action which copies full path to an option from IDE dialogs.<br>
+    Adds 'Copy Option Path' action which copies the full path to an option from IDE dialogs.<br>
     ]]></description>
 
   <idea-version since-build="251"/>
 
   <depends>com.intellij.modules.platform</depends>
   <depends>com.intellij.modules.lang</depends>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <!-- Register application listener to initialize mouse event interceptor early -->
+    <applicationInitializedListener implementation="com.intellij.plugin.copyOptionPath.CopyOptionPathApplicationListener"/>
+  </extensions>
 
   <actions>
     <action id="CopyOptionsPath" description="Copies option path to clipboard" text="Copy Option Path"
