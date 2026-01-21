@@ -14,7 +14,7 @@ import java.awt.event.MouseEvent
 
 /**
  * Intercepts mouse events to prevent component activation (checkbox toggle, button press, etc.)
- * when the user performs Ctrl+Click (or Cmd+Click on macOS) to copy the option path.
+ * when the user performs Ctrl+Click (or Cmd+Click on macOS) to copy the setting path.
  *
  * The IntelliJ Platform processes mouse shortcuts on MOUSE_RELEASED, but by that time
  * the MOUSE_PRESSED event has already been dispatched to the component. This interceptor

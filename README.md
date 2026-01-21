@@ -60,8 +60,8 @@ The plugin provides settings in **Settings | Advanced Settings** under the **Cop
 
 | Setting                                           | Default  | Description                                                                                                                                            |
 |---------------------------------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Intercept Ctrl/Cmd+Click for Copy Setting Path** | Disabled | When enabled, Ctrl+Click (or Cmd+Click on macOS) in dialogs will copy the option path **without activating UI components** like checkboxes or buttons. |
-| **Path separator style**                          | Pipe     | Choose the separator character used between path components in the copied option path.                                                                 |
+| **Intercept Ctrl/Cmd+Click for Copy Setting Path** | Disabled | When enabled, Ctrl+Click (or Cmd+Click on macOS) in dialogs will copy the setting path **without activating UI components** like checkboxes or buttons. |
+| **Path separator style**                          | Pipe     | Choose the separator character used between path components in the copied setting path.                                                                 |
 
 #### Path Separator Styles
 
@@ -101,7 +101,7 @@ This fork includes important fixes for compatibility with modern IDE versions:
   clipboard.
 
 - **Optional non-intrusive Ctrl/Cmd+Click** — When enabled in Advanced Settings, Ctrl+Click (Cmd+Click on macOS) copies
-  the option path **without activating the UI component**. Previously, clicking on a checkbox would toggle it, and
+  the setting path **without activating the UI component**. Previously, clicking on a checkbox would toggle it, and
   clicking on a button would activate it. This feature is disabled by default to avoid interfering with standard IDE
   behavior.
 

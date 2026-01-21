@@ -53,7 +53,7 @@ class CopySettingPath : DumbAwareAction() {
     }
 
     /**
-     * Builds the complete option path for the given source component.
+     * Builds the complete setting path for the given source component.
      *
      * @param src The source UI component.
      * @param e The action event containing context information.
