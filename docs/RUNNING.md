@@ -1,6 +1,7 @@
 # Running and Debugging the Plugin
 
-This guide explains how to run the Copy Option Path plugin in a sandboxed IDE instance for testing and how to enable debug logging.
+This guide explains how to run the Copy Option Path plugin in a sandboxed IDE instance for testing and how to enable
+debug logging.
 
 ## Prerequisites
 
@@ -27,6 +28,7 @@ From the terminal or Gradle tool window:
 ```
 
 Or on Windows:
+
 ```cmd
 gradlew.bat runIde
 ```
@@ -48,6 +50,7 @@ gradlew.bat runIde
 ### Setting Breakpoints
 
 Place breakpoints in key locations:
+
 - `CopyOptionsPath.kt:actionPerformed()` - Main action entry point
 - `CopyOptionsPath.kt:update()` - Action visibility/enablement logic
 - `CopyActionUtil.kt` - Path building utilities
@@ -79,11 +82,13 @@ View the log file in the sandboxed IDE:
 ### Method 3: Log File Location
 
 The sandboxed IDE log is located at:
+
 - **Windows:** `build/idea-sandbox/system/log/idea.log`
 - **macOS:** `build/idea-sandbox/system/log/idea.log`
 - **Linux:** `build/idea-sandbox/system/log/idea.log`
 
 You can tail the log in real-time:
+
 ```bash
 # Windows (PowerShell)
 Get-Content -Path "build/idea-sandbox/system/log/idea.log" -Wait -Tail 50
@@ -105,6 +110,7 @@ LOG.warn("Can not get project structure path: " + e.message)
 ```
 
 To add more debug output, use the existing logger:
+
 ```kotlin
 import com.intellij.plugin.copyOptionPath.LOG
 
@@ -130,6 +136,7 @@ Once the sandboxed IDE is running:
 ### Testing Locations
 
 Test the plugin in these dialogs:
+
 - **Settings/Preferences** - Main settings dialog
 - **Project Structure** (`Ctrl+Alt+Shift+S`) - For IDEA/EDU products
 - Any modal dialog with tree structures, tabs, or titled panels
@@ -151,12 +158,14 @@ Test the plugin in these dialogs:
 ### Action Not Available
 
 The "Copy Option Path" action only appears when:
+
 - A UI component is focused in a dialog
 - The dialog is modal (Settings, Project Structure, etc.)
 
 ### Build Issues
 
 If the build fails, try:
+
 ```bash
 ./gradlew clean build
 ```

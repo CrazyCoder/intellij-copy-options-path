@@ -14,13 +14,13 @@ import com.intellij.ui.tabs.JBTabs
 import com.intellij.ui.treeStructure.treetable.TreeTable
 import com.intellij.util.ui.UIUtil
 import java.awt.Component
-import javax.swing.JTable
 import java.awt.Container
 import java.awt.Point
 import java.awt.event.MouseEvent
 import java.lang.reflect.Field
 import javax.swing.DefaultListModel
 import javax.swing.JPanel
+import javax.swing.JTable
 import javax.swing.SwingUtilities
 
 /** Logger instance for the copy option path plugin. */

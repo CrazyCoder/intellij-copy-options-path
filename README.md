@@ -1,6 +1,7 @@
 # Copy Option Path
 
-An IntelliJ Platform plugin that adds a **Copy Option Path** action to JetBrains IDEs. This action copies the full navigation path to any UI option in IDE dialogs (such as Settings, Project Structure, etc.) to the clipboard.
+An IntelliJ Platform plugin that adds a **Copy Option Path** action to JetBrains IDEs. This action copies the full
+navigation path to any UI option in IDE dialogs (such as Settings, Project Structure, etc.) to the clipboard.
 
 ## Features
 
@@ -28,7 +29,8 @@ An IntelliJ Platform plugin that adds a **Copy Option Path** action to JetBrains
 
 ### Quick Copy (Recommended)
 
-**Ctrl+Click** (or **Cmd+Click** on macOS) on any option, label, button, or setting in a dialog to instantly copy its full path to the clipboard.
+**Ctrl+Click** (or **Cmd+Click** on macOS) on any option, label, button, or setting in a dialog to instantly copy its
+full path to the clipboard.
 
 ### Context Menu
 
@@ -56,32 +58,35 @@ Settings | Editor | General | Auto Import | Java | Insert imports on paste:
 
 The plugin provides settings in **Settings | Advanced Settings** under the **Copy Option Path** group:
 
-| Setting | Default | Description |
-|---------|---------|-------------|
+| Setting                                           | Default  | Description                                                                                                                                            |
+|---------------------------------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Intercept Ctrl/Cmd+Click for Copy Option Path** | Disabled | When enabled, Ctrl+Click (or Cmd+Click on macOS) in dialogs will copy the option path **without activating UI components** like checkboxes or buttons. |
-| **Path separator style** | Pipe | Choose the separator character used between path components in the copied option path. |
+| **Path separator style**                          | Pipe     | Choose the separator character used between path components in the copied option path.                                                                 |
 
 #### Path Separator Styles
 
 You can customize how path components are separated in the copied text:
 
-| Style | Example Output |
-|-------|----------------|
+| Style              | Example Output                     |
+|--------------------|------------------------------------|
 | **Pipe** (default) | `Settings \| Editor \| Code Style` |
-| **Arrow** | `Settings > Editor > Code Style` |
-| **Unicode Arrow** | `Settings → Editor → Code Style` |
-| **Guillemet** | `Settings » Editor » Code Style` |
-| **Triangle** | `Settings ▸ Editor ▸ Code Style` |
+| **Arrow**          | `Settings > Editor > Code Style`   |
+| **Unicode Arrow**  | `Settings → Editor → Code Style`   |
+| **Guillemet**      | `Settings » Editor » Code Style`   |
+| **Triangle**       | `Settings ▸ Editor ▸ Code Style`   |
 
 #### When to Enable Mouse Interception
 
-Enable the mouse interception setting if you want Ctrl/Cmd+Click to **only** copy the path without triggering the underlying UI element. This is useful when:
+Enable the mouse interception setting if you want Ctrl/Cmd+Click to **only** copy the path without triggering the
+underlying UI element. This is useful when:
+
 - You frequently Ctrl+Click on checkboxes and don't want them to toggle
 - You want to copy paths from buttons without activating them
 
 #### When to Keep Mouse Interception Disabled (Default)
 
 Keep the default (disabled) if:
+
 - You rarely use Ctrl/Cmd+Click on interactive elements
 - You prefer the standard IDE behavior where Ctrl/Cmd+Click may also trigger the component
 - You want to minimize any potential interference with other IDE features that use Ctrl/Cmd+Click
@@ -90,15 +95,26 @@ Keep the default (disabled) if:
 
 This fork includes important fixes for compatibility with modern IDE versions:
 
-- **Optional non-intrusive Ctrl/Cmd+Click** — When enabled in Advanced Settings, Ctrl+Click (Cmd+Click on macOS) copies the option path **without activating the UI component**. Previously, clicking on a checkbox would toggle it, and clicking on a button would activate it. This feature is disabled by default to avoid interfering with standard IDE behavior.
+- **Optional non-intrusive Ctrl/Cmd+Click** — When enabled in Advanced Settings, Ctrl+Click (Cmd+Click on macOS) copies
+  the option path **without activating the UI component**. Previously, clicking on a checkbox would toggle it, and
+  clicking on a button would activate it. This feature is disabled by default to avoid interfering with standard IDE
+  behavior.
 
-- **Added settings group detection** — The plugin now captures titled separator groups (like "Java", "Kotlin", "Groovy" sections) that appear in Settings panels. For example, clicking on "Insert imports on paste:" in the Java section of Auto Import settings now produces `Settings | Editor | General | Auto Import | Java | Insert imports on paste:` instead of omitting the "Java" group name.
+- **Added settings group detection** — The plugin now captures titled separator groups (like "Java", "Kotlin", "Groovy"
+  sections) that appear in Settings panels. For example, clicking on "Insert imports on paste:" in the Java section of
+  Auto Import settings now produces `Settings | Editor | General | Auto Import | Java | Insert imports on paste:`
+  instead of omitting the "Java" group name.
 
-- **Fixed Settings dialog breadcrumb extraction** — The plugin now correctly copies the full path in Settings dialogs (e.g., `Settings | Editor | General | Auto Import`) instead of just the final element. This was broken due to internal API changes in recent IDE versions.
+- **Fixed Settings dialog breadcrumb extraction** — The plugin now correctly copies the full path in Settings dialogs (
+  e.g., `Settings | Editor | General | Auto Import`) instead of just the final element. This was broken due to internal
+  API changes in recent IDE versions.
 
-- **Fixed Project Structure dialog paths** — Added support for extracting section names (like "Project Settings", "Platform Settings") in the Project Structure dialog, providing complete paths such as `Project Structure | Project Settings | Project | Language level:`.
+- **Fixed Project Structure dialog paths** — Added support for extracting section names (like "Project Settings", "
+  Platform Settings") in the Project Structure dialog, providing complete paths such as
+  `Project Structure | Project Settings | Project | Language level:`.
 
-- **Updated for 2025.1+ compatibility** — Refactored internal reflection-based code to work with the latest IntelliJ Platform architecture changes.
+- **Updated for 2025.1+ compatibility** — Refactored internal reflection-based code to work with the latest IntelliJ
+  Platform architecture changes.
 
 ## Use Cases
 
