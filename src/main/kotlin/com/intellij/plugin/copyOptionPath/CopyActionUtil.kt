@@ -6,6 +6,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.newEditor.SettingsDialog
+import com.intellij.ui.TitledSeparator
 import com.intellij.ui.border.IdeaTitledBorder
 import com.intellij.ui.navigation.History
 import com.intellij.ui.navigation.Place
@@ -13,6 +14,7 @@ import com.intellij.ui.tabs.JBTabs
 import com.intellij.ui.treeStructure.treetable.TreeTable
 import com.intellij.util.ui.UIUtil
 import java.awt.Component
+import java.awt.Container
 import java.awt.Point
 import java.awt.event.MouseEvent
 import java.lang.reflect.Field
@@ -174,7 +176,7 @@ fun getConvertedMousePoint(event: AnActionEvent, destination: Component): Point?
 }
 
 /**
- * Extracts the middle path segments (tabs and titled borders) from the component hierarchy.
+ * Extracts the middle path segments (tabs, titled borders, and titled separators) from the component hierarchy.
  *
  * @param src The source component.
  * @param path StringBuilder to append path segments to.
@@ -187,6 +189,14 @@ fun getMiddlePath(src: Component, path: StringBuilder) {
         }
     }
 
+    // Add titled separator group name if present (e.g., "Java" section in Auto Import settings)
+    findPrecedingTitledSeparator(src)?.let { separator ->
+        val separatorText = separator.text
+        if (!separatorText.isNullOrEmpty()) {
+            appendItem(path, separatorText)
+        }
+    }
+
     // Add titled border text if present
     (src.parent as? JPanel)?.let { parent ->
         (parent.border as? IdeaTitledBorder)?.title?.let { title ->
@@ -195,6 +205,86 @@ fun getMiddlePath(src: Component, path: StringBuilder) {
             }
         }
     }
+}
+
+/**
+ * Finds the TitledSeparator that visually precedes the given component.
+ *
+ * TitledSeparators are used in Settings panels to group related options
+ * (e.g., "Java" section in Auto Import settings). This function traverses
+ * the component hierarchy to find the separator that appears before the
+ * target component in the visual layout.
+ *
+ * @param component The component to find the preceding separator for.
+ * @return The TitledSeparator that precedes the component, or null if not found.
+ */
+private fun findPrecedingTitledSeparator(component: Component): TitledSeparator? {
+    // Get the Y coordinate of the component to compare positions
+    val componentY = getAbsoluteY(component)
+
+    // Traverse up through parent containers looking for TitledSeparators
+    var current: Container? = component.parent
+    var bestSeparator: TitledSeparator? = null
+    var bestSeparatorY = Int.MIN_VALUE
+
+    while (current != null) {
+        // Search this container and all its descendants for TitledSeparators
+        val separators = findAllTitledSeparators(current)
+
+        for (separator in separators) {
+            val separatorY = getAbsoluteY(separator)
+            // The separator must be above (or at same level as) the component
+            // and closer than any previously found separator
+            if (separatorY <= componentY && separatorY > bestSeparatorY) {
+                bestSeparator = separator
+                bestSeparatorY = separatorY
+            }
+        }
+
+        // If we found a separator at this level, use it
+        if (bestSeparator != null) {
+            return bestSeparator
+        }
+
+        current = current.parent
+    }
+
+    return bestSeparator
+}
+
+/**
+ * Gets the absolute Y coordinate of a component on screen.
+ */
+private fun getAbsoluteY(component: Component): Int {
+    return runCatching {
+        component.locationOnScreen.y
+    }.getOrElse {
+        // Fallback to relative calculation if component is not showing
+        var y = 0
+        var current: Component? = component
+        while (current != null) {
+            y += current.y
+            current = current.parent
+        }
+        y
+    }
+}
+
+/**
+ * Recursively finds all TitledSeparator components within a container.
+ */
+private fun findAllTitledSeparators(container: Container): List<TitledSeparator> {
+    val result = mutableListOf<TitledSeparator>()
+
+    for (comp in container.components) {
+        if (comp is TitledSeparator) {
+            result.add(comp)
+        } else if (comp is Container) {
+            result.addAll(findAllTitledSeparators(comp))
+        }
+    }
+
+    return result
 }
 
 /**

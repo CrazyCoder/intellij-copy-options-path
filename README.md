@@ -39,10 +39,10 @@ An IntelliJ Platform plugin that adds a **Copy Option Path** action to JetBrains
 
 ### Example Output
 
-When you Ctrl+Click on the "Insert imports on paste" dropdown in Settings:
+When you Ctrl+Click on the "Insert imports on paste" dropdown in the Java section of Auto Import settings:
 
 ```
-Settings | Editor | General | Auto Import | Insert imports on paste:
+Settings | Editor | General | Auto Import | Java | Insert imports on paste:
 ```
 
 ## Compatibility
@@ -53,6 +53,8 @@ Settings | Editor | General | Auto Import | Insert imports on paste:
 ## Recent Fixes
 
 This fork includes important fixes for compatibility with modern IDE versions:
+
+- **Added settings group detection** — The plugin now captures titled separator groups (like "Java", "Kotlin", "Groovy" sections) that appear in Settings panels. For example, clicking on "Insert imports on paste:" in the Java section of Auto Import settings now produces `Settings | Editor | General | Auto Import | Java | Insert imports on paste:` instead of omitting the "Java" group name.
 
 - **Fixed Settings dialog breadcrumb extraction** — The plugin now correctly copies the full path in Settings dialogs (e.g., `Settings | Editor | General | Auto Import`) instead of just the final element. This was broken due to internal API changes in recent IDE versions.
 
