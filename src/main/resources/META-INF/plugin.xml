@@ -14,6 +14,11 @@
 
   <resource-bundle>messages.CopyOptionPathBundle</resource-bundle>
 
+  <applicationListeners>
+    <listener class="com.intellij.plugin.copyOptionPath.CopyOptionPathAppLifecycleListener"
+              topic="com.intellij.ide.AppLifecycleListener"/>
+  </applicationListeners>
+
   <extensions defaultExtensionNs="com.intellij">
     <!-- Advanced setting to control mouse click interception -->
     <advancedSetting id="copy.option.path.mouse.intercept"

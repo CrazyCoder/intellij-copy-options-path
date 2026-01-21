@@ -20,6 +20,9 @@ import java.awt.event.MouseEvent
  * the MOUSE_PRESSED event has already been dispatched to the component. This interceptor
  * blocks the MOUSE_PRESSED event when the CopyOptionsPath shortcut is active, preventing
  * unwanted side effects while still allowing the action to trigger on MOUSE_RELEASED.
+ *
+ * Registered via [CopyOptionPathAppLifecycleListener] when the application frame is created,
+ * ensuring it's initialized early before any dialogs can be opened.
  */
 @Service(Service.Level.APP)
 class MouseEventInterceptor : Disposable {
@@ -37,7 +40,7 @@ class MouseEventInterceptor : Disposable {
 
     /**
      * Registers the event interceptor with the IDE event queue.
-     * Should be called during plugin initialization.
+     * Called from [CopyOptionPathAppLifecycleListener.appFrameCreated].
      */
     fun register() {
         if (isRegistered) return
