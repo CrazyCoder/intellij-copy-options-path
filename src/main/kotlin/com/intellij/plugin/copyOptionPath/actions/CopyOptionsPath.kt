@@ -1,5 +1,6 @@
 package com.intellij.plugin.copyOptionPath.actions
 
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.application.ApplicationNamesInfo
@@ -18,64 +19,74 @@ import javax.swing.JLabel
 
 class CopyOptionsPath : DumbAwareAction() {
 
-  init {
-    isEnabledInModalContext = true
-  }
-
-  override fun update(e: AnActionEvent) {
-    e.presentation.isEnabled = e.getData(PlatformDataKeys.CONTEXT_COMPONENT) != null
-  }
-
-  override fun actionPerformed(e: AnActionEvent) {
-    val src = e.getData(PlatformDataKeys.CONTEXT_COMPONENT) ?: return
-    val path = StringBuilder()
-    if (!buildOptionPath(src, path, e)) return
-
-    val result = trimFinalResult(path)
-    LOG.debug("Selected path: $result")
-    e.inputEvent.consume()
-    CopyPasteManager.getInstance().setContents(TextTransferable(result, result))
-  }
-
-  private fun buildOptionPath(src: Component, path: StringBuilder, e: AnActionEvent): Boolean {
-    val dialog = DialogWrapper.findInstance(src) ?: return false
-    if (dialog is SettingsDialog) {
-      val startPath = getPathFromSettingsDialog(dialog)
-      appendItem(path, startPath)
-    } else {
-      appendItem(path, dialog.title)
-    if (dialog is SingleConfigurableEditor
-        && (ApplicationNamesInfo.getInstance().productName.equals("idea", true)
-                || ApplicationNamesInfo.getInstance().productName.contains("edu", true)
-                )
-    ) {
-        appendPathFromProjectStructureDialog(dialog.configurable, path)
-      }
+    init {
+        isEnabledInModalContext = true
     }
 
-    getMiddlePath(src, path)
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
-    if (src is TreeTable) {
-      val selectedRow = if (src.selectedRow == -1) detectRowFromMousePoint(src, e) else src.selectedRow
-      if (selectedRow != -1) {
-        val pathForRow = src.tree.getPathForRow(selectedRow)
-        val rowPath = pathForRow?.path
-        if (rowPath != null) appendTreePath(rowPath, path)
-      }
-    } else if (src is Tree) {
-      val point = getConvertedMousePoint(e, src)
-      if (point != null) {
-        val rowForLocation = src.getRowForLocation(point.x, point.y)
-        val rowPath = if (rowForLocation > 0) src.getPathForRow(rowForLocation) else null
-        if (rowPath != null) {
-          appendTreePath(rowPath.path, path)
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabled = e.getData(PlatformDataKeys.CONTEXT_COMPONENT) != null
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val src = e.getData(PlatformDataKeys.CONTEXT_COMPONENT) ?: return
+        val path = StringBuilder()
+        if (!buildOptionPath(src, path, e)) return
+
+        val result = trimFinalResult(path)
+        LOG.debug("Selected path: $result")
+        e.inputEvent?.consume()
+        CopyPasteManager.getInstance().setContents(TextTransferable(result, result))
+    }
+
+    private fun buildOptionPath(src: Component, path: StringBuilder, e: AnActionEvent): Boolean {
+        val dialog = DialogWrapper.findInstance(src) ?: return false
+
+        if (dialog is SettingsDialog) {
+            // Try the new approach: get path directly from SettingsEditor via component hierarchy
+            val settingsEditorPath = getPathFromSettingsEditor(src)
+            if (!settingsEditorPath.isNullOrEmpty()) {
+                path.append("Settings | ")
+                path.append(settingsEditorPath.joinToString(" | "))
+                path.append(" | ")
+            } else {
+                // Fall back to the old approach via SettingsDialog
+                val startPath = getPathFromSettingsDialog(dialog)
+                appendItem(path, startPath)
+            }
+        } else {
+            appendItem(path, dialog.title)
+            if (dialog is SingleConfigurableEditor && (ApplicationNamesInfo.getInstance().productName.equals(
+                    "idea", true
+                ) || ApplicationNamesInfo.getInstance().productName.contains("edu", true))
+            ) {
+                appendPathFromProjectStructureDialog(dialog.configurable, path)
+            }
         }
-      }
-    }
-    //end path
-    val text = (src as? AbstractButton)?.text ?: (src as? JLabel)?.text ?: src.name
-    appendSrcText(path, text)
-    return true
-  }
 
+        getMiddlePath(src, path)
+
+        if (src is TreeTable) {
+            val selectedRow = if (src.selectedRow == -1) detectRowFromMousePoint(src, e) else src.selectedRow
+            if (selectedRow != -1) {
+                val pathForRow = src.tree.getPathForRow(selectedRow)
+                val rowPath = pathForRow?.path
+                if (rowPath != null) appendTreePath(rowPath, path)
+            }
+        } else if (src is Tree) {
+            val point = getConvertedMousePoint(e, src)
+            if (point != null) {
+                val rowForLocation = src.getRowForLocation(point.x, point.y)
+                val rowPath = if (rowForLocation > 0) src.getPathForRow(rowForLocation) else null
+                if (rowPath != null) {
+                    appendTreePath(rowPath.path, path)
+                }
+            }
+        }
+        //end path
+        val text = (src as? AbstractButton)?.text ?: (src as? JLabel)?.text ?: src.name
+        appendSrcText(path, text)
+        return true
+    }
 }
