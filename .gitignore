@@ -1,12 +1,25 @@
-# Default ignored files
-/shelf/
-/workspace.xml
-# Editor-based HTTP Client requests
-/httpRequests/
-# Datasource local storage ignored files
-/dataSources/
-/dataSources.local.xml
-
-/.gradle/
-/.idea
+# Build outputs
 /build/
+/out/
+
+# Gradle
+/.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# IntelliJ IDEA
+/.idea/
+!/.idea/icon.svg
+*.iml
+
+# IntelliJ Platform Plugin development
+/.intellijPlatform/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local configuration
+/local.properties
+CLAUDE.md
+/.claude/
