@@ -158,16 +158,19 @@ class CopyOptionsPath : DumbAwareAction() {
     /**
      * Appends path from a JTable component.
      *
-     * For tables like Registry dialog, extracts the value from the first column (key/name)
-     * of the selected or clicked row.
+     * For tables like Registry dialog, extracts the value from the clicked cell
+     * (or first column if no specific cell was clicked).
      */
     private fun appendTablePath(table: JTable, e: AnActionEvent, path: StringBuilder, separator: String) {
         val selectedRow = table.selectedRow.takeIf { it != -1 } ?: detectRowFromMousePoint(table, e)
         if (selectedRow != -1) {
-            // Get the value from the first column (typically the key/name column)
-            val value = table.getValueAt(selectedRow, 0)
-            value?.toString()?.takeIf { it.isNotEmpty() }?.let { keyValue ->
-                appendItem(path, keyValue, separator)
+            // Get the column from the click point, default to 0 if not found
+            val selectedColumn = detectColumnFromMousePoint(table, e).takeIf { it != -1 }
+                ?: table.selectedColumn.takeIf { it != -1 }
+                ?: 0
+            val value = table.getValueAt(selectedRow, selectedColumn)
+            value?.toString()?.takeIf { it.isNotEmpty() }?.let { cellValue ->
+                appendItem(path, cellValue, separator)
             }
         }
     }

@@ -179,6 +179,19 @@ fun detectRowFromMousePoint(table: JTable, e: AnActionEvent): Int {
 }
 
 /**
+ * Detects the column at the mouse pointer position in a JTable.
+ *
+ * @param table The JTable component.
+ * @param e The action event containing mouse information.
+ * @return The column index at the mouse position, or -1 if not found.
+ */
+fun detectColumnFromMousePoint(table: JTable, e: AnActionEvent): Int {
+    val point = getConvertedMousePoint(e, table) ?: return -1
+    val columnAtPoint = table.columnAtPoint(point)
+    return if (columnAtPoint in 0 until table.columnCount) columnAtPoint else -1
+}
+
+/**
  * Converts the mouse event coordinates to the destination component's coordinate space.
  *
  * @param event The action event containing the input event.
