@@ -24,6 +24,12 @@ import javax.swing.JToggleButton
  */
 
 /**
+ * Data class representing a toggle button with its screen position.
+ * Used for grid detection and parent-child relationship analysis.
+ */
+private data class ToggleButtonPosition(val tb: JToggleButton, val y: Int, val x: Int)
+
+/**
  * Extracts the middle path segments (tabs, titled borders, and titled separators) from the component hierarchy.
  *
  * This function collects UI elements that provide navigation context within a configurable panel:
@@ -193,13 +199,14 @@ private fun findPrecedingTitledSeparator(component: Component, boundary: Compone
  * Finds the group label for a toggle button (radio button or checkbox).
  *
  * In Kotlin UI DSL, toggle button groups created with `buttonsGroup(title)` or
- * panel groups with a label have a JLabel positioned above the buttons that
- * serves as the group title (e.g., "Show in Reader mode:").
+ * panel groups with a label have a JLabel positioned either:
+ * 1. Above the buttons (vertical layout) - serves as the group title (e.g., "Show in Reader mode:")
+ * 2. To the left on the same row (horizontal layout) - e.g., "Placement:" followed by Top/Bottom buttons
  *
  * This function ensures the toggle button is actually part of the labeled group by:
- * 1. Finding candidate labels above the button
+ * 1. Finding candidate labels above or on the same row (to the left) of the button
  * 2. Verifying there are no group boundaries (TitledSeparators or other group labels) between them
- * 3. Checking that the button is within a reasonable vertical distance from the label
+ * 3. Checking that the button is within a reasonable distance from the label
  *
  * @param toggleButton The toggle button (JRadioButton or JCheckBox) to find the group label for.
  * @param boundary The boundary component (typically ConfigurableEditor) to limit the search.
@@ -210,6 +217,74 @@ private fun findToggleButtonGroupLabel(toggleButton: JToggleButton, boundary: Co
     val buttonX = getAbsoluteX(toggleButton)
     val searchContainer = (boundary as? Container) ?: toggleButton.parent ?: return null
 
+    // First, check for same-row label (horizontal layout like "Placement: (Top) (Bottom)")
+    val sameRowLabel = findSameRowLabel(toggleButton, buttonY, buttonX, searchContainer)
+    if (sameRowLabel != null) return sameRowLabel
+
+    // Fall back to above-label detection (vertical layout)
+    return findAboveLabel(toggleButton, buttonY, buttonX, searchContainer)
+}
+
+/**
+ * Finds a label on the same row to the left of the toggle button.
+ * This handles horizontal radio button layouts like "Placement: (Top) (Bottom)".
+ */
+private fun findSameRowLabel(
+    toggleButton: JToggleButton,
+    buttonY: Int,
+    buttonX: Int,
+    searchContainer: Container
+): String? {
+    var bestLabel: JLabel? = null
+    var bestLabelX = Int.MIN_VALUE
+
+    findAllComponentsOfType<JLabel>(searchContainer).forEach { label ->
+        if (!label.isShowing) return@forEach
+
+        // Skip labels that have labelFor set to a component of different type
+        val labelFor = label.labelFor
+        if (labelFor != null && !isSameToggleButtonType(labelFor, toggleButton)) return@forEach
+
+        val labelText = label.text?.removeHtmlTags()?.trim()
+        if (labelText.isNullOrEmpty()) return@forEach
+
+        // Only consider labels ending with ":" as group labels
+        if (!labelText.endsWith(":")) return@forEach
+
+        val labelY = getAbsoluteY(label)
+        val labelX = getAbsoluteX(label)
+
+        // Check if label is on the same row (within threshold)
+        val verticalDistance = kotlin.math.abs(labelY - buttonY)
+        if (verticalDistance > LayoutConstants.SAME_ROW_THRESHOLD) return@forEach
+
+        // Label must be to the left of the button
+        if (labelX >= buttonX) return@forEach
+
+        // Must be within reasonable horizontal distance
+        val horizontalDistance = buttonX - labelX
+        if (horizontalDistance > LayoutConstants.MAX_HORIZONTAL_DISTANCE) return@forEach
+
+        // Pick the closest label to the left (largest X that's still < buttonX)
+        if (labelX > bestLabelX) {
+            bestLabel = label
+            bestLabelX = labelX
+        }
+    }
+
+    return bestLabel?.text?.removeHtmlTags()?.trim()
+}
+
+/**
+ * Finds a label above the toggle button (vertical layout).
+ * This is the original behavior for layouts where the label is above the buttons.
+ */
+private fun findAboveLabel(
+    toggleButton: JToggleButton,
+    buttonY: Int,
+    buttonX: Int,
+    searchContainer: Container
+): String? {
     var bestLabel: JLabel? = null
     var bestLabelY = Int.MIN_VALUE
 
@@ -229,8 +304,8 @@ private fun findToggleButtonGroupLabel(toggleButton: JToggleButton, boundary: Co
         val labelY = getAbsoluteY(label)
         val labelX = getAbsoluteX(label)
 
-        // The group label must be above the toggle button
-        if (labelY >= buttonY) return@forEach
+        // The group label must be above the toggle button (not on the same row - that's handled separately)
+        if (labelY >= buttonY - LayoutConstants.SAME_ROW_THRESHOLD) return@forEach
 
         // The group label should be roughly aligned horizontally
         val horizontalDistance = kotlin.math.abs(labelX - buttonX)
@@ -366,6 +441,7 @@ private fun isSameToggleButtonType(labelFor: Component, toggleButton: JToggleBut
  * - TitledSeparators act as boundaries - candidates separated by a TitledSeparator are excluded
  * - Group labels (ending with ":") block candidates unless there's an intermediate parent
  * - For radio buttons at the same level, only the selected one is considered a parent
+ * - Grid layout siblings are excluded (checkboxes in same grid are siblings, not parents)
  *
  * @param toggleButton The toggle button to find parents for.
  * @param boundary The boundary component (typically ConfigurableEditor) to limit the search.
@@ -438,6 +514,18 @@ private fun findParentToggleButtons(toggleButton: JToggleButton, boundary: Compo
         }
     }
 
+    // Collect all toggle buttons with their positions to detect grid layouts
+    val allToggleButtons = mutableListOf<ToggleButtonPosition>()
+    findAllComponentsOfType<JToggleButton>(searchContainer).forEach { tb ->
+        if (!tb.isShowing) return@forEach
+        if (tb !is JCheckBox && tb !is JRadioButton) return@forEach
+        allToggleButtons.add(ToggleButtonPosition(tb, getAbsoluteY(tb), getAbsoluteX(tb)))
+    }
+
+    // Detect grid siblings - checkboxes that are part of the same grid as the target
+    // A grid is detected when multiple toggle buttons are on the same row (similar Y) with different X
+    val gridSiblings = findGridSiblings(toggleButton, buttonY, buttonX, allToggleButtons)
+
     // Find the topmost checkbox in the panel - it may act as a "master" checkbox
     // that controls all options below it, even those at the same indentation level.
     // But only if there are items actually indented under it (proving it's a master, not just first).
@@ -504,6 +592,9 @@ private fun findParentToggleButtons(toggleButton: JToggleButton, boundary: Compo
         // Skip candidates that are separated by a TitledSeparator
         // (they're in a different section and shouldn't be parents)
         if (tbY < closestSeparatorY) return@forEach
+
+        // Skip grid siblings - they are peers in the same grid, not parents
+        if (gridSiblings.contains(tb)) return@forEach
 
         // In multi-column layouts, skip candidates that are in a different column
         // (horizontally too far from the target button)
@@ -575,6 +666,94 @@ private fun findParentToggleButtons(toggleButton: JToggleButton, boundary: Compo
     }
 
     return buildHierarchyFromCandidates(parentCandidates, buttonX)
+}
+
+/**
+ * Detects grid siblings - toggle buttons that are part of the same grid as the target.
+ *
+ * A grid is a layout where multiple checkboxes are arranged in rows and columns:
+ * ```
+ * Languages:
+ *   Groovy    Jupyter    XML
+ *   HTML      Kotlin     YAML
+ *   Java      Markdown
+ * ```
+ *
+ * In a grid, items are siblings (not parent-child), even if they have different X positions.
+ * This function identifies all toggle buttons that belong to the same grid as the target.
+ *
+ * Grid detection works by:
+ * 1. Finding toggle buttons on the same row as the target (within SAME_ROW_THRESHOLD)
+ * 2. If multiple items exist on the same row with different X positions, it's a grid
+ * 3. Expanding to include all rows that share the same column structure
+ *
+ * @param target The target toggle button.
+ * @param targetY The Y coordinate of the target.
+ * @param targetX The X coordinate of the target.
+ * @param allToggleButtons All toggle buttons with their positions.
+ * @return Set of toggle buttons that are grid siblings (excluding the target itself).
+ */
+private fun findGridSiblings(
+    target: JToggleButton,
+    targetY: Int,
+    targetX: Int,
+    allToggleButtons: List<ToggleButtonPosition>
+): Set<JToggleButton> {
+    // Find items on the same row as the target
+    val sameRowItems = allToggleButtons.filter { 
+        it.tb !== target && 
+        kotlin.math.abs(it.y - targetY) <= LayoutConstants.SAME_ROW_THRESHOLD 
+    }
+
+    // Check if there are items at different X positions on the same row - indicates a grid
+    val hasMultipleColumns = sameRowItems.any { 
+        kotlin.math.abs(it.x - targetX) > LayoutConstants.MIN_INDENT_DIFF 
+    }
+
+    if (!hasMultipleColumns) {
+        // Not a grid layout - no siblings
+        return emptySet()
+    }
+
+    // This is a grid. Collect all X positions (columns) in the target's row
+    val gridColumns = mutableSetOf(targetX)
+    sameRowItems.forEach { gridColumns.add(it.x) }
+
+    // Find all rows that have items at the same column positions (part of the same grid)
+    // Group all toggle buttons by their approximate row (Y coordinate)
+    val rowGroups = allToggleButtons.groupBy { it.y / LayoutConstants.SAME_ROW_THRESHOLD }
+    
+    val gridSiblings = mutableSetOf<JToggleButton>()
+    
+    for ((_, rowItems) in rowGroups) {
+        // Check if this row has items at similar column positions as our grid
+        val rowColumnPositions = rowItems.map { it.x }.toSet()
+        
+        // A row is part of the grid if it has items at similar positions to our grid columns
+        val isGridRow = gridColumns.any { gridCol ->
+            rowColumnPositions.any { rowCol ->
+                kotlin.math.abs(gridCol - rowCol) <= LayoutConstants.MIN_INDENT_DIFF
+            }
+        }
+        
+        if (isGridRow && rowItems.size > 1) {
+            // Multiple items in the row at different columns - this is a grid row
+            val hasMultipleColumnsInRow = rowItems.any { item1 ->
+                rowItems.any { item2 ->
+                    item1 !== item2 && kotlin.math.abs(item1.x - item2.x) > LayoutConstants.MIN_INDENT_DIFF
+                }
+            }
+            if (hasMultipleColumnsInRow) {
+                rowItems.forEach { 
+                    if (it.tb !== target) {
+                        gridSiblings.add(it.tb) 
+                    }
+                }
+            }
+        }
+    }
+
+    return gridSiblings
 }
 
 /**
