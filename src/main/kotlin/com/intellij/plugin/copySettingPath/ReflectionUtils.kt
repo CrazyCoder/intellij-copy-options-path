@@ -106,18 +106,3 @@ fun extractDisplayNameViaReflection(obj: Any, vararg additionalMethods: String):
     }
     return null
 }
-
-/**
- * Safely invokes a method by name and returns its result as a String.
- *
- * @param obj The object to invoke the method on.
- * @param methodName The name of the method to invoke.
- * @return The method result as a string, or null if invocation fails.
- */
-fun invokeMethodSafely(obj: Any, methodName: String): String? {
-    return runCatching {
-        val method = obj.javaClass.getMethod(methodName)
-        method.isAccessible = true
-        method.invoke(obj)?.toString()?.takeIf { it.isNotBlank() }
-    }.getOrNull()
-}

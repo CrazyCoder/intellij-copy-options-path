@@ -106,7 +106,7 @@ object SettingsPathExtractor {
             LOG.debug("pathNames result: $pathNames")
 
             if (!pathNames.isNullOrEmpty()) {
-                buildPath(SETTINGS_PREFIX, pathNames)
+                buildPath(pathNames)
             } else {
                 SETTINGS_PREFIX
             }
@@ -119,11 +119,11 @@ object SettingsPathExtractor {
     }
 
     /**
-     * Builds a path string from a prefix and collection of segments.
+     * Builds a path string from the Settings prefix and collection of segments.
      */
-    private fun buildPath(prefix: String, segments: Collection<String>): String {
+    private fun buildPath(segments: Collection<String>): String {
         return buildString {
-            append(prefix)
+            append(SETTINGS_PREFIX)
             append(PathConstants.SEPARATOR)
             append(segments.joinToString(PathConstants.SEPARATOR))
         }
@@ -299,7 +299,7 @@ object SettingsPathExtractor {
         findAllComponentsOfType<TitledSeparator>(searchContainer).forEach { separator ->
             if (!separator.isShowing) return@forEach
             val sepY = getAbsoluteY(separator)
-            if (sepY < componentY && sepY > bestY) {
+            if (sepY in (bestY + 1)..<componentY) {
                 bestSeparator = separator
                 bestY = sepY
             }

@@ -25,9 +25,6 @@ object PathConstants {
     /** Separator used between path components. */
     const val SEPARATOR = " | "
 
-    /** Prefix for Settings dialog paths. */
-    const val SETTINGS_PREFIX = "Settings"
-
     /** Placeholder separator in Project Structure that should be ignored. */
     const val IGNORED_SEPARATOR = "--"
 
@@ -68,32 +65,14 @@ object PathConstants {
  * These control spatial analysis for component positioning.
  */
 object LayoutConstants {
-    /** Maximum horizontal distance for radio button group label detection. */
-    const val MAX_HORIZONTAL_DISTANCE = 200
-
-    /** Minimum indentation difference to consider a parent-child relationship. */
-    const val MIN_INDENT_DIFF = 10
-
     /** Maximum height for value components (excludes large panels/text areas). */
     const val MAX_VALUE_COMPONENT_HEIGHT = 80
 
     /** Maximum width for value components (excludes large panels). */
     const val MAX_VALUE_COMPONENT_WIDTH = 400
 
-    /** Maximum search depth when traversing ancestor containers. */
-    const val MAX_SEARCH_DEPTH = 5
-
-    /** Distance threshold for considering a candidate "good enough". */
-    const val GOOD_CANDIDATE_DISTANCE = 100
-
     /** Tolerance for row alignment (center Y difference). */
     const val ROW_ALIGNMENT_TOLERANCE = 5
-
-    /** Tolerance for horizontal overlap detection. */
-    const val HORIZONTAL_OVERLAP_TOLERANCE = 5
-
-    /** Threshold for considering two components to be in the same row (Y difference). */
-    const val SAME_ROW_THRESHOLD = 30
 }
 
 /**
@@ -156,21 +135,6 @@ fun appendItem(path: StringBuilder, item: String?, separator: String = PathConst
 }
 
 /**
- * Appends source component text to the path without a trailing separator.
- *
- * @param path StringBuilder to append to.
- * @param text The text to append.
- */
-fun appendSrcText(path: StringBuilder, text: String?) {
-    if (!text.isNullOrEmpty()) {
-        val trimmedPath = path.trimEnd { it in PathSeparator.allSeparatorChars }
-        if (!trimmedPath.endsWith(text)) {
-            path.append(text)
-        }
-    }
-}
-
-/**
  * Trims the final result by removing trailing separators, HTML tags, and Advanced Settings IDs.
  *
  * @param path The path StringBuilder to process.
@@ -195,15 +159,6 @@ fun trimFinalResult(path: StringBuilder): String {
  */
 fun getAbsoluteY(component: Component): Int =
     runCatching { component.locationOnScreen.y }.getOrDefault(component.y)
-
-/**
- * Gets the absolute X coordinate of a component on screen.
- *
- * @param component The component to get the X coordinate for.
- * @return The absolute X coordinate on screen.
- */
-fun getAbsoluteX(component: Component): Int =
-    runCatching { component.locationOnScreen.x }.getOrDefault(component.x)
 
 /**
  * Finds all components of a specific type within a container recursively.

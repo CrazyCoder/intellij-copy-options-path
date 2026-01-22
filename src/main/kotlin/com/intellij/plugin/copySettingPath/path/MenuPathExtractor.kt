@@ -4,7 +4,6 @@ import com.intellij.openapi.actionSystem.impl.ActionMenu
 import com.intellij.openapi.actionSystem.impl.ActionMenuItem
 import com.intellij.plugin.copySettingPath.removeHtmlTags
 import java.awt.Component
-import javax.swing.JMenu
 import javax.swing.JMenuBar
 import javax.swing.JMenuItem
 import javax.swing.JPopupMenu
@@ -33,8 +32,7 @@ object MenuPathExtractor {
     fun isMenuComponent(component: Component?): Boolean {
         return component is ActionMenuItem ||
                 component is ActionMenu ||
-                component is JMenuItem ||
-                component is JMenu
+                component is JMenuItem
     }
 
     /**
@@ -78,7 +76,7 @@ object MenuPathExtractor {
                     }
                 }
 
-                is JMenu, is ActionMenu -> {
+                is ActionMenu -> {
                     // This shouldn't happen in normal flow (menus are inside popups)
                     // but handle it just in case
                     val menuText = getMenuComponentText(current)
@@ -118,29 +116,8 @@ object MenuPathExtractor {
                 component.text?.removeHtmlTags()?.trim()
             }
 
-            is JMenu -> {
-                component.text?.removeHtmlTags()?.trim()
-            }
-
             else -> null
         }
     }
 
-    /**
-     * Finds the menu component at the deepest level in the hierarchy.
-     * Used when we have a mouse event and need to find the actual menu item.
-     *
-     * @param component The component to start from.
-     * @return The deepest menu component, or null if not found.
-     */
-    fun findDeepestMenuComponent(component: Component?): Component? {
-        var current = component
-        while (current != null) {
-            if (isMenuComponent(current)) {
-                return current
-            }
-            current = current.parent
-        }
-        return null
-    }
 }

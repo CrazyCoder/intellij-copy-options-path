@@ -130,12 +130,7 @@ object TreeTablePathExtractor {
             return extractDisplayTextFromUserObject(userObject)
         }
 
-        val pathStr = node.toString()
-        return if (pathStr.isEmpty()) {
-            extractMyTextField(node)
-        } else {
-            pathStr
-        }
+        return node.toString().ifEmpty { extractMyTextField(node) }
     }
 
     /**
