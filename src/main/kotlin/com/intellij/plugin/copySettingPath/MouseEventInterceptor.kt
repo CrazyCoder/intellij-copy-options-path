@@ -5,6 +5,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.MouseShortcut
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.keymap.KeymapManager
 import com.intellij.openapi.options.advanced.AdvancedSettings
@@ -68,7 +69,7 @@ class MouseEventInterceptor : Disposable {
                 { event -> interceptMouseEvent(event) },
                 this
             )
-            LOG.info("MouseEventInterceptor registered for CopySettingPath")
+            LOG.debug { "MouseEventInterceptor registered for CopySettingPath" }
         }
     }
 
@@ -117,14 +118,14 @@ class MouseEventInterceptor : Disposable {
         if (MenuPathExtractor.isMenuComponent(component)) {
             // Record the menu component for path extraction on MOUSE_RELEASED
             pendingMenuCopy = component
-            LOG.info("Blocking MOUSE_PRESSED on menu component for CopySettingPath")
+            LOG.debug { "Blocking MOUSE_PRESSED on menu component for CopySettingPath" }
             return true
         }
 
         // For non-menu components, just block MOUSE_PRESSED as before
         // The MOUSE_RELEASED will still trigger our action via the normal shortcut mechanism
         pendingMenuCopy = null
-        LOG.info("Blocking MOUSE_PRESSED to prevent component activation for CopySettingPath")
+        LOG.debug { "Blocking MOUSE_PRESSED to prevent component activation for CopySettingPath" }
         return true
     }
 
@@ -150,7 +151,7 @@ class MouseEventInterceptor : Disposable {
         copyMenuPath(menuComponent)
 
         // Consume the event to prevent the menu action from executing
-        LOG.info("Blocking MOUSE_RELEASED on menu component - path copied")
+        LOG.debug { "Blocking MOUSE_RELEASED on menu component - path copied" }
         return true
     }
 
@@ -163,10 +164,10 @@ class MouseEventInterceptor : Disposable {
 
         if (path != null) {
             val result = trimFinalResult(StringBuilder(path))
-            LOG.info("Copying menu path: $result")
+            LOG.debug { "Copying menu path: $result" }
             CopyPasteManager.getInstance().setContents(TextTransferable(result, result))
         } else {
-            LOG.warn("Could not extract menu path from component: $component")
+            LOG.debug { "Could not extract menu path from component: $component" }
         }
     }
 
@@ -224,7 +225,7 @@ class MouseEventInterceptor : Disposable {
 
     override fun dispose() {
         // Dispatcher is automatically removed when this Disposable is disposed
-        LOG.info("MouseEventInterceptor disposed")
+        LOG.debug { "MouseEventInterceptor disposed" }
     }
 }
 

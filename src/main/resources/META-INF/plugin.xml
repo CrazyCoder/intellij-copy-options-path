@@ -48,6 +48,8 @@
   <applicationListeners>
     <listener class="com.intellij.plugin.copySettingPath.CopySettingPathAppLifecycleListener"
               topic="com.intellij.ide.AppLifecycleListener"/>
+    <listener class="com.intellij.plugin.copySettingPath.CopySettingPathDynamicPluginListener"
+              topic="com.intellij.ide.plugins.DynamicPluginListener"/>
   </applicationListeners>
 
   <extensions defaultExtensionNs="com.intellij">
