@@ -6,10 +6,12 @@ import com.intellij.ui.tabs.JBTabs
 import java.awt.Component
 import java.awt.Container
 import java.util.*
+import javax.swing.JCheckBox
 import javax.swing.JComponent
 import javax.swing.JLabel
 import javax.swing.JRadioButton
 import javax.swing.JTabbedPane
+import javax.swing.JToggleButton
 
 /**
  * Utility functions for extracting middle path segments from the component hierarchy.
@@ -61,14 +63,17 @@ fun getMiddlePath(src: Component, path: StringBuilder, separator: String = PathC
         appendItem(path, titledSeparator.text, separator)
     }
 
-    // Add radio button group label and parent radio buttons if the source is a radio button
-    if (src is JRadioButton) {
-        findRadioButtonGroupLabel(src, configurableEditor)?.let { groupLabel ->
-            appendItem(path, groupLabel, separator)
+    // Add toggle button hierarchy (parent toggle buttons first, then group label)
+    if (src is JToggleButton) {
+        // Add parent toggle buttons hierarchy first (handles mixed checkbox/radio button nesting)
+        // This ensures the topmost "master" checkbox comes before any group labels
+        findParentToggleButtons(src, configurableEditor).forEach { parentText ->
+            appendItem(path, parentText, separator)
         }
 
-        findParentRadioButtons(src, configurableEditor).forEach { parentText ->
-            appendItem(path, parentText, separator)
+        // Add toggle button group label (for both radio buttons and checkboxes in labeled groups)
+        findToggleButtonGroupLabel(src, configurableEditor)?.let { groupLabel ->
+            appendItem(path, groupLabel, separator)
         }
     }
 }
@@ -117,25 +122,67 @@ private fun collectTitledBorder(component: Component, items: ArrayDeque<String>)
  * only within the boundary component to find the separator that appears
  * before the target component in the visual layout.
  *
+ * For side-by-side layouts (e.g., "Relative Location" on left, "Borders" on right),
+ * this function considers horizontal position to avoid matching separators from
+ * different columns.
+ *
  * @param component The component to find the preceding separator for.
  * @param boundary The boundary component (typically ConfigurableEditor) to limit the search.
  * @return The TitledSeparator that precedes the component, or null if not found.
  */
 private fun findPrecedingTitledSeparator(component: Component, boundary: Component?): TitledSeparator? {
     val componentY = getAbsoluteY(component)
+    val componentX = getAbsoluteX(component)
     val searchContainer = (boundary as? Container) ?: component.parent ?: return null
 
     var bestSeparator: TitledSeparator? = null
     var bestSeparatorY = Int.MIN_VALUE
 
-    // Use sequence for lazy evaluation - stop early if we find a good match
+    // Collect all separators with their positions
+    data class SeparatorInfo(val separator: TitledSeparator, val y: Int, val x: Int)
+    val separators = mutableListOf<SeparatorInfo>()
+
     findAllComponentsOfType<TitledSeparator>(searchContainer).forEach { separator ->
         if (!separator.isShowing) return@forEach
-
         val separatorY = getAbsoluteY(separator)
-        if (separatorY <= componentY && separatorY > bestSeparatorY) {
-            bestSeparator = separator
-            bestSeparatorY = separatorY
+        if (separatorY <= componentY) {
+            separators.add(SeparatorInfo(separator, separatorY, getAbsoluteX(separator)))
+        }
+    }
+
+    // Detect if this is a multi-column layout by checking if any separators are side-by-side
+    val isMultiColumnLayout = separators.any { sep1 ->
+        separators.any { sep2 ->
+            sep1 !== sep2 &&
+                    kotlin.math.abs(sep1.y - sep2.y) < LayoutConstants.SAME_ROW_THRESHOLD &&
+                    kotlin.math.abs(sep1.x - sep2.x) > LayoutConstants.MAX_HORIZONTAL_DISTANCE
+        }
+    }
+
+    // Find the closest separator that the component is horizontally aligned with
+    for (sepInfo in separators) {
+        if (sepInfo.y > bestSeparatorY) {
+            if (isMultiColumnLayout) {
+                // In multi-column layouts, only consider separators where the component
+                // is horizontally close to or to the right of the separator
+                // (components are typically indented under their separator)
+                val horizontalDiff = componentX - sepInfo.x
+                
+                // Skip if component is too far to the left of the separator
+                if (horizontalDiff < -LayoutConstants.MIN_INDENT_DIFF) continue
+                
+                // Skip if component is too far to the right (likely in another column)
+                // Check if there's another separator that's closer horizontally
+                val closerSeparatorExists = separators.any { other ->
+                    other !== sepInfo &&
+                            other.y <= componentY &&
+                            kotlin.math.abs(componentX - other.x) < kotlin.math.abs(componentX - sepInfo.x)
+                }
+                if (closerSeparatorExists && horizontalDiff > LayoutConstants.MAX_HORIZONTAL_DISTANCE) continue
+            }
+
+            bestSeparator = sepInfo.separator
+            bestSeparatorY = sepInfo.y
         }
     }
 
@@ -143,29 +190,38 @@ private fun findPrecedingTitledSeparator(component: Component, boundary: Compone
 }
 
 /**
- * Finds the group label for a radio button.
+ * Finds the group label for a toggle button (radio button or checkbox).
  *
- * In Kotlin UI DSL, radio button groups created with `buttonsGroup(title)` have
- * a JLabel positioned above the radio buttons that serves as the group title.
+ * In Kotlin UI DSL, toggle button groups created with `buttonsGroup(title)` or
+ * panel groups with a label have a JLabel positioned above the buttons that
+ * serves as the group title (e.g., "Show in Reader mode:").
  *
- * @param radioButton The radio button to find the group label for.
+ * This function ensures the toggle button is actually part of the labeled group by:
+ * 1. Finding candidate labels above the button
+ * 2. Verifying there are no group boundaries (TitledSeparators or other group labels) between them
+ * 3. Checking that the button is within a reasonable vertical distance from the label
+ *
+ * @param toggleButton The toggle button (JRadioButton or JCheckBox) to find the group label for.
  * @param boundary The boundary component (typically ConfigurableEditor) to limit the search.
  * @return The group label text, or null if not found.
  */
-private fun findRadioButtonGroupLabel(radioButton: JRadioButton, boundary: Component?): String? {
-    val radioButtonY = getAbsoluteY(radioButton)
-    val radioButtonX = getAbsoluteX(radioButton)
-    val searchContainer = (boundary as? Container) ?: radioButton.parent ?: return null
+private fun findToggleButtonGroupLabel(toggleButton: JToggleButton, boundary: Component?): String? {
+    val buttonY = getAbsoluteY(toggleButton)
+    val buttonX = getAbsoluteX(toggleButton)
+    val searchContainer = (boundary as? Container) ?: toggleButton.parent ?: return null
 
     var bestLabel: JLabel? = null
     var bestLabelY = Int.MIN_VALUE
 
+    // Collect all group-label-like labels (ending with ":")
+    val groupLabels = mutableListOf<Pair<JLabel, Int>>()
+
     findAllComponentsOfType<JLabel>(searchContainer).forEach { label ->
         if (!label.isShowing) return@forEach
 
-        // Skip labels that have labelFor set to a non-radio-button component
+        // Skip labels that have labelFor set to a component of different type
         val labelFor = label.labelFor
-        if (labelFor != null && labelFor !is JRadioButton) return@forEach
+        if (labelFor != null && !isSameToggleButtonType(labelFor, toggleButton)) return@forEach
 
         val labelText = label.text?.removeHtmlTags()?.trim()
         if (labelText.isNullOrEmpty()) return@forEach
@@ -173,12 +229,17 @@ private fun findRadioButtonGroupLabel(radioButton: JRadioButton, boundary: Compo
         val labelY = getAbsoluteY(label)
         val labelX = getAbsoluteX(label)
 
-        // The group label must be above the radio button
-        if (labelY >= radioButtonY) return@forEach
+        // The group label must be above the toggle button
+        if (labelY >= buttonY) return@forEach
 
         // The group label should be roughly aligned horizontally
-        val horizontalDistance = kotlin.math.abs(labelX - radioButtonX)
+        val horizontalDistance = kotlin.math.abs(labelX - buttonX)
         if (horizontalDistance > LayoutConstants.MAX_HORIZONTAL_DISTANCE) return@forEach
+
+        // Track labels that look like group labels (ending with ":")
+        if (labelText.endsWith(":")) {
+            groupLabels.add(Pair(label, labelY))
+        }
 
         if (labelY > bestLabelY) {
             bestLabel = label
@@ -186,54 +247,366 @@ private fun findRadioButtonGroupLabel(radioButton: JRadioButton, boundary: Compo
         }
     }
 
-    return bestLabel?.text?.removeHtmlTags()?.trim()
-}
+    // If no label found, return null
+    val foundLabel = bestLabel ?: return null
 
-/**
- * Finds parent radio buttons in a hierarchical structure.
- *
- * In some Settings panels, radio buttons can be nested in a tree-like structure
- * where child options depend on a parent radio button being selected.
- *
- * @param radioButton The radio button to find parents for.
- * @param boundary The boundary component (typically ConfigurableEditor) to limit the search.
- * @return List of parent radio button texts, ordered from top-most to closest parent.
- */
-private fun findParentRadioButtons(radioButton: JRadioButton, boundary: Component?): List<String> {
-    val radioButtonY = getAbsoluteY(radioButton)
-    val radioButtonX = getAbsoluteX(radioButton)
-    val searchContainer = (boundary as? Container) ?: radioButton.parent ?: return emptyList()
+    val bestLabelText = foundLabel.text?.removeHtmlTags()?.trim() ?: return null
 
-    val parentCandidates = mutableListOf<Pair<JRadioButton, Int>>()
+    // Only consider labels that end with ":" as group labels
+    if (!bestLabelText.endsWith(":")) return null
 
-    findAllComponentsOfType<JRadioButton>(searchContainer).forEach { rb ->
-        if (rb === radioButton || !rb.isShowing) return@forEach
+    val labelX = getAbsoluteX(foundLabel)
 
-        val rbY = getAbsoluteY(rb)
-        val rbX = getAbsoluteX(rb)
+    // In Kotlin UI DSL, checkboxes within a group are indented relative to the group label.
+    // If the button is at the same X position or less indented than the label, it's outside the group.
+    if (buttonX <= labelX + LayoutConstants.MIN_INDENT_DIFF) {
+        return null
+    }
 
-        // Parent must be above (smaller Y) and less indented (smaller X)
-        if (rbY < radioButtonY && rbX < radioButtonX - LayoutConstants.MIN_INDENT_DIFF) {
-            parentCandidates.add(Pair(rb, rbY))
+    // Check if there's a TitledSeparator between the label and the button
+    // If so, the button is not part of this group
+    if (hasInterveningSeparator(searchContainer, bestLabelY, buttonY)) {
+        return null
+    }
+
+    // Check if there's another group label between the best label and the button
+    // (a closer group label would indicate our button is outside the first group)
+    for ((otherLabel, otherLabelY) in groupLabels) {
+        if (otherLabel !== foundLabel && otherLabelY > bestLabelY && otherLabelY < buttonY) {
+            // There's another group label between our candidate and the button
+            // This means the button is not part of the candidate's group
+            return null
         }
     }
 
-    if (parentCandidates.isEmpty()) return emptyList()
+    // Check if there's a parent checkbox between the label and the button.
+    // If a checkbox exists that is above the button and less indented (acting as a parent),
+    // and that checkbox is below the group label, then the button belongs to that checkbox, not the label.
+    if (hasInterveningParentCheckbox(searchContainer, bestLabelY, buttonY, buttonX)) {
+        return null
+    }
+
+    return bestLabelText
+}
+
+/**
+ * Checks if there's a TitledSeparator between two Y coordinates.
+ * This indicates a visual group boundary that separates UI elements.
+ */
+private fun hasInterveningSeparator(container: Container, topY: Int, bottomY: Int): Boolean {
+    findAllComponentsOfType<TitledSeparator>(container).forEach { separator ->
+        if (!separator.isShowing) return@forEach
+        val separatorY = getAbsoluteY(separator)
+        if (separatorY in (topY + 1) until bottomY) {
+            return true
+        }
+    }
+    return false
+}
+
+/**
+ * Checks if there's a checkbox between the label and the button that acts as a parent.
+ *
+ * In some Settings panels, checkboxes can have child toggle buttons (radio buttons or other checkboxes)
+ * indented below them. For example:
+ * - "Format code according to preferred style" (checkbox)
+ *   - "Use active scheme: Default" (radio button, indented child)
+ *
+ * If such a parent checkbox exists between the group label and the button, the button
+ * belongs to that checkbox, not to the group label.
+ *
+ * @param container The container to search in.
+ * @param labelY The Y coordinate of the group label.
+ * @param buttonY The Y coordinate of the toggle button.
+ * @param buttonX The X coordinate of the toggle button.
+ * @return true if there's a parent checkbox between the label and the button.
+ */
+private fun hasInterveningParentCheckbox(container: Container, labelY: Int, buttonY: Int, buttonX: Int): Boolean {
+    findAllComponentsOfType<JCheckBox>(container).forEach { checkbox ->
+        if (!checkbox.isShowing) return@forEach
+
+        val checkboxY = getAbsoluteY(checkbox)
+        val checkboxX = getAbsoluteX(checkbox)
+
+        // The checkbox must be between the label and the button (vertically)
+        if (checkboxY !in (labelY + 1) until buttonY) return@forEach
+
+        // The checkbox must be less indented than the button (acting as a parent)
+        if (checkboxX < buttonX - LayoutConstants.MIN_INDENT_DIFF) {
+            return true
+        }
+    }
+    return false
+}
+
+/**
+ * Checks if a labelFor component is the same type as the toggle button.
+ * This ensures we don't match checkbox labels for radio buttons and vice versa.
+ */
+private fun isSameToggleButtonType(labelFor: Component, toggleButton: JToggleButton): Boolean {
+    return when (toggleButton) {
+        is JRadioButton -> labelFor is JRadioButton
+        is JCheckBox -> labelFor is JCheckBox
+        else -> labelFor is JToggleButton
+    }
+}
+
+/**
+ * Finds all parent toggle buttons (both checkboxes and radio buttons) in a hierarchical structure.
+ *
+ * In Settings panels, toggle buttons can be nested in various combinations:
+ * - Checkbox → Radio button → Checkbox (mixed nesting)
+ * - Checkbox → Checkbox (checkbox nesting)
+ * - Radio button → Radio button (radio button nesting)
+ *
+ * This function finds ALL parent toggle buttons regardless of their type and returns them
+ * in the correct hierarchical order based on their Y position and indentation.
+ *
+ * Key filtering rules:
+ * - TitledSeparators act as boundaries - candidates separated by a TitledSeparator are excluded
+ * - Group labels (ending with ":") block candidates unless there's an intermediate parent
+ * - For radio buttons at the same level, only the selected one is considered a parent
+ *
+ * @param toggleButton The toggle button to find parents for.
+ * @param boundary The boundary component (typically ConfigurableEditor) to limit the search.
+ * @return List of parent toggle button texts, ordered from top-most to closest parent.
+ */
+private fun findParentToggleButtons(toggleButton: JToggleButton, boundary: Component?): List<String> {
+    val buttonY = getAbsoluteY(toggleButton)
+    val buttonX = getAbsoluteX(toggleButton)
+    val searchContainer = (boundary as? Container) ?: toggleButton.parent ?: return emptyList()
+
+    // Collect all TitledSeparators with their positions for boundary checking
+    data class SeparatorPos(val y: Int, val x: Int)
+    val titledSeparators = mutableListOf<SeparatorPos>()
+    findAllComponentsOfType<TitledSeparator>(searchContainer).forEach { separator ->
+        if (!separator.isShowing) return@forEach
+        val sepY = getAbsoluteY(separator)
+        if (sepY < buttonY) {
+            titledSeparators.add(SeparatorPos(sepY, getAbsoluteX(separator)))
+        }
+    }
+
+    // Detect if this is a multi-column layout
+    val isMultiColumnLayout = titledSeparators.any { sep1 ->
+        titledSeparators.any { sep2 ->
+            sep1 !== sep2 &&
+                    kotlin.math.abs(sep1.y - sep2.y) < LayoutConstants.SAME_ROW_THRESHOLD &&
+                    kotlin.math.abs(sep1.x - sep2.x) > LayoutConstants.MAX_HORIZONTAL_DISTANCE
+        }
+    }
+
+    // Find the closest TitledSeparator above the target button, considering horizontal position
+    // for side-by-side layouts (e.g., "Relative Location" on left, "Borders" on right)
+    val closestSeparatorY = run {
+        var bestY = Int.MIN_VALUE
+        for (sep in titledSeparators) {
+            if (sep.y <= bestY) continue
+
+            if (isMultiColumnLayout) {
+                val horizontalDiff = buttonX - sep.x
+                
+                // Skip if button is too far to the left of the separator
+                if (horizontalDiff < -LayoutConstants.MIN_INDENT_DIFF) continue
+                
+                // Skip if there's a closer separator horizontally
+                val closerSeparatorExists = titledSeparators.any { other ->
+                    other !== sep &&
+                            other.y < buttonY &&
+                            kotlin.math.abs(buttonX - other.x) < kotlin.math.abs(buttonX - sep.x)
+                }
+                if (closerSeparatorExists && horizontalDiff > LayoutConstants.MAX_HORIZONTAL_DISTANCE) continue
+            }
+
+            bestY = sep.y
+        }
+        bestY
+    }
+
+    // Collect all group labels (ending with ":") with both Y and X positions
+    // We need X to determine if the target is actually indented under the label
+    data class GroupLabel(val y: Int, val x: Int)
+    val groupLabels = mutableListOf<GroupLabel>()
+    findAllComponentsOfType<JLabel>(searchContainer).forEach { label ->
+        if (!label.isShowing) return@forEach
+        val labelText = label.text?.removeHtmlTags()?.trim()
+        if (!labelText.isNullOrEmpty() && labelText.endsWith(":")) {
+            val labelY = getAbsoluteY(label)
+            if (labelY < buttonY) {
+                groupLabels.add(GroupLabel(labelY, getAbsoluteX(label)))
+            }
+        }
+    }
+
+    // Find the topmost checkbox in the panel - it may act as a "master" checkbox
+    // that controls all options below it, even those at the same indentation level.
+    // But only if there are items actually indented under it (proving it's a master, not just first).
+    var topmostCheckbox: JCheckBox? = null
+    var topmostCheckboxY = Int.MAX_VALUE
+    var topmostCheckboxX = 0
+    findAllComponentsOfType<JCheckBox>(searchContainer).forEach { cb ->
+        if (cb === toggleButton || !cb.isShowing) return@forEach
+        val cbY = getAbsoluteY(cb)
+        if (cbY < topmostCheckboxY) {
+            topmostCheckboxY = cbY
+            topmostCheckboxX = getAbsoluteX(cb)
+            topmostCheckbox = cb
+        }
+    }
+
+    // Check if the topmost checkbox is actually a "master" checkbox.
+    // A master checkbox has indented items DIRECTLY under it (before any TitledSeparator).
+    // For example, in Reader Mode:
+    //   - "Enable Reader mode" (X=20) <- topmost
+    //   - "Show in Reader mode:" label
+    //   - Indented items (X=60)       <- directly under topmost, proves it's a master
+    // In Commit settings:
+    //   - "Clear initial commit message" (X=30) <- topmost
+    //   - "Commit Checks" TitledSeparator       <- separator breaks the relationship
+    //   - Indented items (X=60)                 <- under the separator, not the checkbox
+    val isTopmostActuallyMaster = topmostCheckbox != null && run {
+        // Find the first TitledSeparator after the topmost checkbox
+        var firstSeparatorY = Int.MAX_VALUE
+        titledSeparators.forEach { sep ->
+            if (sep.y in (topmostCheckboxY + 1) until firstSeparatorY) {
+                firstSeparatorY = sep.y
+            }
+        }
+
+        // Check if there are indented items between topmost checkbox and first separator
+        // (or just after topmost if no separator)
+        findAllComponentsOfType<JToggleButton>(searchContainer).any { tb ->
+            if (tb === topmostCheckbox || !tb.isShowing) return@any false
+            if (tb !is JCheckBox && tb !is JRadioButton) return@any false
+            val tbX = getAbsoluteX(tb)
+            val tbY = getAbsoluteY(tb)
+            // Must be indented, after topmost, and BEFORE the first separator
+            tbX > topmostCheckboxX + LayoutConstants.MIN_INDENT_DIFF &&
+                    tbY > topmostCheckboxY && tbY < firstSeparatorY
+        }
+    }
+
+    // First pass: collect all potential parent candidates based on position and indentation
+    data class Candidate(val tb: JToggleButton, val y: Int, val x: Int)
+    val allCandidates = mutableListOf<Candidate>()
+
+    findAllComponentsOfType<JToggleButton>(searchContainer).forEach { tb ->
+        // Skip if it's the same component or not a checkbox/radio button
+        if (tb === toggleButton || !tb.isShowing) return@forEach
+        if (tb !is JCheckBox && tb !is JRadioButton) return@forEach
+
+        val tbY = getAbsoluteY(tb)
+        val tbX = getAbsoluteX(tb)
+
+        // Parent must be above (smaller Y)
+        if (tbY >= buttonY) return@forEach
+
+        // Skip candidates that are separated by a TitledSeparator
+        // (they're in a different section and shouldn't be parents)
+        if (tbY < closestSeparatorY) return@forEach
+
+        // In multi-column layouts, skip candidates that are in a different column
+        // (horizontally too far from the target button)
+        if (isMultiColumnLayout) {
+            val horizontalDistance = kotlin.math.abs(tbX - buttonX)
+            if (horizontalDistance > LayoutConstants.MAX_HORIZONTAL_DISTANCE) return@forEach
+        }
+
+        // Check indentation requirement:
+        // - Normal case: parent must be less indented (smaller X)
+        // - Special case: topmost "master" checkbox can be a parent even at same indentation
+        val isLessIndented = tbX < buttonX - LayoutConstants.MIN_INDENT_DIFF
+        val isTopmostAtSameLevel = isTopmostActuallyMaster && tb === topmostCheckbox &&
+                kotlin.math.abs(tbX - buttonX) <= LayoutConstants.MIN_INDENT_DIFF
+
+        if (isLessIndented || isTopmostAtSameLevel) {
+            allCandidates.add(Candidate(tb, tbY, tbX))
+        }
+    }
+
+    // Second pass: filter candidates based on group label blocking and radio button selection
+    // A group label only blocks a candidate if:
+    // 1. It's between the candidate and the target (vertically)
+    // 2. AND the target is indented relative to the label (horizontally)
+    // 3. AND there's no intermediate candidate at the same level as the label
+    // Exception: the topmost checkbox is never blocked - it's the "master" checkbox for the panel
+    val parentCandidates = mutableListOf<Pair<JToggleButton, Int>>()
+
+    // Group candidates by their indentation level for radio button selection filtering
+    // Radio buttons at the same level form a group - only the selected one should be a parent
+    val candidatesByLevel = allCandidates.groupBy { it.x }
+
+    for (candidate in allCandidates) {
+        // Topmost "master" checkbox is always a valid parent - it controls the entire panel
+        if (isTopmostActuallyMaster && candidate.tb === topmostCheckbox) {
+            parentCandidates.add(Pair(candidate.tb, candidate.y))
+            continue
+        }
+
+        // For radio buttons at the same level, only the selected one should be a parent
+        if (candidate.tb is JRadioButton) {
+            val sameLevelCandidates = candidatesByLevel[candidate.x] ?: emptyList()
+            val hasOtherRadioButtonsAtSameLevel = sameLevelCandidates.any {
+                it !== candidate && it.tb is JRadioButton
+            }
+            if (hasOtherRadioButtonsAtSameLevel) {
+                // This is a radio button group - only include if selected
+                if (!candidate.tb.isSelected) continue
+            }
+        }
+
+        val hasBlockingGroupLabel = groupLabels.any { (labelY, labelX) ->
+            // Label must be between candidate and target
+            if (labelY !in (candidate.y + 1) until buttonY) return@any false
+            // Target must be indented under the label
+            if (buttonX <= labelX + LayoutConstants.MIN_INDENT_DIFF) return@any false
+            // Check if there's another candidate between the label and target at the same level as the label
+            // If so, the target belongs to that candidate, not the label's group
+            val hasIntermediateParentAtLabelLevel = allCandidates.any { other ->
+                other !== candidate &&
+                        other.y in (labelY + 1) until buttonY &&
+                        kotlin.math.abs(other.x - labelX) <= LayoutConstants.MIN_INDENT_DIFF
+            }
+            !hasIntermediateParentAtLabelLevel
+        }
+        if (!hasBlockingGroupLabel) {
+            parentCandidates.add(Pair(candidate.tb, candidate.y))
+        }
+    }
+
+    return buildHierarchyFromCandidates(parentCandidates, buttonX)
+}
+
+/**
+ * Builds a hierarchy of parent component texts from sorted candidates.
+ *
+ * This function takes a list of parent candidates (toggle buttons with their Y coordinates)
+ * and builds a hierarchy based on indentation levels (X coordinates).
+ *
+ * @param candidates List of (component, Y coordinate) pairs representing potential parents.
+ * @param startX The X coordinate of the child component to start building hierarchy from.
+ * @return List of parent texts, ordered from top-most to closest parent.
+ */
+private fun <T : JToggleButton> buildHierarchyFromCandidates(
+    candidates: MutableList<Pair<T, Int>>,
+    startX: Int
+): List<String> {
+    if (candidates.isEmpty()) return emptyList()
 
     // Sort by Y coordinate (top to bottom)
-    parentCandidates.sortBy { it.second }
+    candidates.sortBy { it.second }
 
-    // Build the hierarchy
+    // Build the hierarchy by walking from closest to farthest parent
     val result = mutableListOf<String>()
-    var currentX = radioButtonX
+    var currentX = startX
 
-    for ((rb, _) in parentCandidates.reversed()) {
-        val rbX = getAbsoluteX(rb)
-        if (rbX < currentX - LayoutConstants.MIN_INDENT_DIFF) {
-            val text = rb.text?.removeHtmlTags()?.trim()
+    for ((component, _) in candidates.reversed()) {
+        val componentX = getAbsoluteX(component)
+        if (componentX < currentX - LayoutConstants.MIN_INDENT_DIFF) {
+            val text = component.text?.removeHtmlTags()?.trim()
             if (!text.isNullOrEmpty()) {
                 result.add(0, text)
-                currentX = rbX
+                currentX = componentX
             }
         }
     }

@@ -89,6 +89,9 @@ object LayoutConstants {
 
     /** Tolerance for horizontal overlap detection. */
     const val HORIZONTAL_OVERLAP_TOLERANCE = 5
+
+    /** Threshold for considering two components to be in the same row (Y difference). */
+    const val SAME_ROW_THRESHOLD = 30
 }
 
 /**
