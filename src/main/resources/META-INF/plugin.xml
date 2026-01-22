@@ -27,7 +27,7 @@
     <h3>Configuration</h3>
     <p>Go to <b>Settings | Advanced Settings | Copy Setting Path</b> to configure:</p>
     <ul>
-      <li><b>Path separator style</b>: Choose between pipe (<code>|</code>), arrow (<code>></code>), or breadcrumb (<code>/</code>)</li>
+      <li><b>Path separator style</b>: Choose between pipe (<code>|</code>), arrow (<code>→</code>) and other styles</li>
       <li><b>Mouse click interception</b>: Enable/disable Ctrl+Click behavior</li>
     </ul>
     ]]></description>
