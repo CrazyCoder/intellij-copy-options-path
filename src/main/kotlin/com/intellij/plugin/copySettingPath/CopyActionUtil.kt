@@ -23,9 +23,11 @@ import java.awt.event.MouseEvent
 import java.lang.reflect.Field
 import javax.swing.DefaultListModel
 import javax.swing.tree.DefaultMutableTreeNode
+import java.util.ArrayDeque
 import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
+import javax.swing.JComponent
 import javax.swing.JEditorPane
 import javax.swing.JLabel
 import javax.swing.JList
@@ -61,6 +63,7 @@ private object PathConstants {
     // Class names used for reflection (to avoid direct dependencies)
     const val SETTINGS_EDITOR_CLASS = "com.intellij.openapi.options.newEditor.SettingsEditor"
     const val ABSTRACT_EDITOR_CLASS = "com.intellij.openapi.options.newEditor.AbstractEditor"
+    const val CONFIGURABLE_EDITOR_CLASS = "com.intellij.openapi.options.newEditor.ConfigurableEditor"
     const val BANNER_CLASS = "com.intellij.openapi.options.newEditor.Banner"
     const val CONFIGURABLE_EDITOR_BANNER_CLASS = "com.intellij.openapi.options.newEditor.ConfigurableEditorBanner"
     const val BREADCRUMBS_CLASS = "com.intellij.ui.components.breadcrumbs.Breadcrumbs"
@@ -326,26 +329,72 @@ fun getConvertedMousePoint(event: AnActionEvent, destination: Component): Point?
 /**
  * Extracts the middle path segments (tabs, titled borders, and titled separators) from the component hierarchy.
  *
+ * This function collects UI elements that provide navigation context within a configurable panel:
+ * - Tab names from JBTabs and JTabbedPane (but only within ConfigurableEditor boundary)
+ * - Titled separator group names (e.g., "Java" section in Auto Import settings)
+ * - Titled border text from panel borders
+ *
+ * Important: We only collect tabs that are within the ConfigurableEditor boundary to avoid
+ * picking up tabs from the outer Settings dialog structure (which would add irrelevant paths
+ * like "Project" from the main settings navigation).
+ *
  * @param src The source component.
  * @param path StringBuilder to append path segments to.
  * @param separator The separator to use between path components.
  */
 fun getMiddlePath(src: Component, path: StringBuilder, separator: String = PathConstants.SEPARATOR) {
-    // Add selected tab name if present
-    UIUtil.getParentOfType(JBTabs::class.java, src)?.selectedInfo?.text?.let { tabText ->
-        appendItem(path, tabText, separator)
+    // Find the ConfigurableEditor boundary - we only collect tabs within this boundary
+    val configurableEditor = findParentByClassName(src, PathConstants.CONFIGURABLE_EDITOR_CLASS)
+    
+    // Collect tabs and titled borders from src up to ConfigurableEditor (exclusive)
+    // We traverse upward and collect in reverse order, then add them in correct order
+    val middlePathItems = ArrayDeque<String>()
+    var component: Component? = src
+    
+    while (component != null && component !== configurableEditor) {
+        // Check for JBTabs
+        if (component is JBTabs) {
+            component.selectedInfo?.text?.let { tabText ->
+                if (tabText.isNotEmpty()) {
+                    middlePathItems.addFirst(tabText)
+                }
+            }
+        }
+        
+        // Check for JTabbedPane
+        if (component is javax.swing.JTabbedPane) {
+            val selectedIndex = component.selectedIndex
+            if (selectedIndex >= 0 && selectedIndex < component.tabCount) {
+                val tabTitle = component.getTitleAt(selectedIndex)
+                if (!tabTitle.isNullOrEmpty()) {
+                    middlePathItems.addFirst(tabTitle)
+                }
+            }
+        }
+        
+        // Check for titled border
+        if (component is JComponent) {
+            val border = component.border
+            if (border is IdeaTitledBorder) {
+                val title = border.title
+                if (!title.isNullOrEmpty()) {
+                    middlePathItems.addFirst(title)
+                }
+            }
+        }
+        
+        component = component.parent
+    }
+    
+    // Add collected items in correct order
+    for (item in middlePathItems) {
+        appendItem(path, item, separator)
     }
 
     // Add titled separator group name if present (e.g., "Java" section in Auto Import settings)
+    // This is handled separately as it requires spatial analysis, not just hierarchy traversal
     findPrecedingTitledSeparator(src)?.let { titledSeparator ->
         appendItem(path, titledSeparator.text, separator)
-    }
-
-    // Add titled border text if present
-    (src.parent as? JPanel)?.let { parent ->
-        (parent.border as? IdeaTitledBorder)?.title?.let { title ->
-            appendItem(path, title, separator)
-        }
     }
 }
 
@@ -786,23 +835,32 @@ fun findAdjacentComponent(src: Component): Component? {
 
     val parent = src.parent ?: return null
 
+    // Get source bounds for spatial alignment checks
+    val srcScreenBounds = getScreenBounds(src)
+
     // Priority 2: Look for the next visible value component among siblings
+    // We check spatial alignment to avoid picking up components from different rows
     val components = parent.components
     val srcIndex = components.indexOf(src)
-    if (srcIndex >= 0) {
+    if (srcIndex >= 0 && srcScreenBounds != null) {
         for (i in (srcIndex + 1) until components.size) {
             val nextComponent = components[i]
             if (!nextComponent.isVisible) continue
             
-            // If it's a value component, return it
+            // If it's a value component, check spatial alignment before returning
             if (isValueComponent(nextComponent)) {
-                return nextComponent
+                if (isOnSameRow(srcScreenBounds, nextComponent)) {
+                    return nextComponent
+                }
             }
             
             // If it's a container, search inside for value components
+            // but only return if found component is on the same row
             if (nextComponent is Container) {
                 val valueComp = findValueComponentIn(nextComponent)
-                if (valueComp != null) return valueComp
+                if (valueComp != null && isOnSameRow(srcScreenBounds, valueComp)) {
+                    return valueComp
+                }
             }
         }
     }
@@ -921,6 +979,24 @@ private fun getScreenBounds(component: Component): Rectangle? {
 }
 
 /**
+ * Checks if a component is on the same visual row as the source.
+ * Components are considered on the same row if their center Y coordinates are close.
+ *
+ * @param srcBounds The screen bounds of the source component.
+ * @param component The component to check.
+ * @return true if the component is on the same row as the source.
+ */
+private fun isOnSameRow(srcBounds: Rectangle, component: Component): Boolean {
+    val compBounds = getScreenBounds(component) ?: return false
+    
+    val srcCenterY = srcBounds.y + srcBounds.height / 2
+    val compCenterY = compBounds.y + compBounds.height / 2
+    val maxCenterYDiff = min(srcBounds.height, compBounds.height) / 2 + 5
+    
+    return kotlin.math.abs(srcCenterY - compCenterY) <= maxCenterYDiff
+}
+
+/**
  * Finds the best value component candidate within a container.
  * Returns the component and its distance score, or null if none found.
  */
@@ -954,15 +1030,21 @@ private fun findBestCandidateInContainer(
             val compLeft = compScreenBounds.x
             val compTop = compScreenBounds.y
             val compBottom = compScreenBounds.y + compScreenBounds.height
+            val compHeight = compScreenBounds.height
 
             // Component must be to the right of the source
             if (compLeft >= srcRight - 5) {
                 val horizontalDist = compLeft - srcRight
 
-                // Strict vertical alignment - components must overlap vertically (same row)
-                val verticalOverlap = min(srcBottom, compBottom) - max(srcTop, compTop)
+                // Strict vertical alignment - components must be on the same row
+                // We require that the center Y coordinates are close (within half the height of the smaller component)
+                val srcCenterY = (srcTop + srcBottom) / 2
+                val compCenterY = (compTop + compBottom) / 2
+                val srcHeight = srcBottom - srcTop
+                val maxCenterYDiff = min(srcHeight, compHeight) / 2 + 5 // Allow small tolerance
+                val centerYDiff = kotlin.math.abs(srcCenterY - compCenterY)
                 
-                if (verticalOverlap > 0) {
+                if (centerYDiff <= maxCenterYDiff) {
                     // Prefer components that are closer horizontally
                     val distance = horizontalDist
                     if (distance < bestDistance) {
