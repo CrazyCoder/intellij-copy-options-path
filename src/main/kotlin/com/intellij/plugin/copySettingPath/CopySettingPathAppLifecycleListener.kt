@@ -11,6 +11,6 @@ import com.intellij.ide.AppLifecycleListener
 class CopySettingPathAppLifecycleListener : AppLifecycleListener {
 
     override fun appFrameCreated(commandLineArgs: List<String>) {
-        MouseEventInterceptor.Companion.getInstance().register()
+        MouseEventInterceptor.getInstance().register()
     }
 }

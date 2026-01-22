@@ -10,32 +10,12 @@ import com.intellij.openapi.options.ex.SingleConfigurableEditor
 import com.intellij.openapi.options.newEditor.SettingsDialog
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.ui.DialogWrapper
-import com.intellij.plugin.copySettingPath.PathSeparator
-import com.intellij.plugin.copySettingPath.appendItem
-import com.intellij.plugin.copySettingPath.appendPathFromProjectStructureDialog
-import com.intellij.plugin.copySettingPath.appendSrcText
-import com.intellij.plugin.copySettingPath.appendTreePath
-import com.intellij.plugin.copySettingPath.detectColumnFromMousePoint
-import com.intellij.plugin.copySettingPath.detectRowFromMousePoint
-import com.intellij.plugin.copySettingPath.detectListIndexFromMousePoint
-import com.intellij.plugin.copySettingPath.extractComponentValue
-import com.intellij.plugin.copySettingPath.extractListItemDisplayText
-import com.intellij.plugin.copySettingPath.extractTableCellDisplayText
-import com.intellij.plugin.copySettingPath.findAdjacentComponent
-import com.intellij.plugin.copySettingPath.getConvertedMousePoint
-import com.intellij.plugin.copySettingPath.getMiddlePath
-import com.intellij.plugin.copySettingPath.getPathFromSettingsDialog
-import com.intellij.plugin.copySettingPath.getPathFromSettingsEditor
-import com.intellij.plugin.copySettingPath.trimFinalResult
+import com.intellij.plugin.copySettingPath.*
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.ui.treeStructure.treetable.TreeTable
 import com.intellij.util.ui.TextTransferable
 import java.awt.Component
-import javax.swing.AbstractButton
-import javax.swing.JLabel
-import javax.swing.JList
-import javax.swing.JTable
-import javax.swing.JTree
+import javax.swing.*
 
 /**
  * Action that copies the full navigation path to the currently focused UI setting.
@@ -65,7 +45,7 @@ class CopySettingPath : DumbAwareAction() {
         val path = buildSettingPath(src, e) ?: return
 
         val result = trimFinalResult(path)
-        com.intellij.plugin.copySettingPath.LOG.debug("Selected path: $result")
+        LOG.debug("Selected path: $result")
         e.inputEvent?.consume()
         CopyPasteManager.getInstance().setContents(TextTransferable(result, result))
     }

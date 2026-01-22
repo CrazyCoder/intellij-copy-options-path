@@ -14,35 +14,16 @@ import com.intellij.ui.navigation.History
 import com.intellij.ui.navigation.Place
 import com.intellij.ui.tabs.JBTabs
 import com.intellij.ui.treeStructure.treetable.TreeTable
-import com.intellij.util.ui.UIUtil
 import java.awt.Component
 import java.awt.Container
 import java.awt.Point
 import java.awt.Rectangle
 import java.awt.event.MouseEvent
 import java.lang.reflect.Field
-import javax.swing.DefaultListModel
-import javax.swing.tree.DefaultMutableTreeNode
-import java.util.ArrayDeque
-import javax.swing.AbstractButton
-import javax.swing.JButton
-import javax.swing.JCheckBox
-import javax.swing.JComboBox
-import javax.swing.JComponent
-import javax.swing.JEditorPane
-import javax.swing.JLabel
-import javax.swing.JList
-import javax.swing.JPanel
-import javax.swing.JRadioButton
-import javax.swing.JSlider
-import javax.swing.JSpinner
-import javax.swing.JTable
-import javax.swing.JTextArea
-import javax.swing.JTextField
-import javax.swing.ListCellRenderer
-import javax.swing.SwingUtilities
+import java.util.*
+import javax.swing.*
 import javax.swing.text.JTextComponent
-import kotlin.math.max
+import javax.swing.tree.DefaultMutableTreeNode
 import kotlin.math.min
 
 /** Logger instance for the Copy Setting Path plugin. */
@@ -221,6 +202,7 @@ private fun extractDisplayTextFromUserObject(userObject: Any): String? {
             // Try to resolve it to a display name via ActionManager
             resolveActionDisplayName(userObject) ?: userObject
         }
+
         else -> {
             // Try common interfaces/methods for display name extraction
             extractDisplayNameViaReflection(userObject) ?: userObject.toString().takeIf { it.isNotEmpty() }
@@ -404,6 +386,7 @@ private fun extractTextFromListRenderedComponent(component: Component): String? 
                 component.getCharSequence(false).toString().takeIf { it.isNotBlank() }
             }.getOrNull()
         }
+
         is Container -> {
             // Search for a JLabel, AbstractButton, or SimpleColoredComponent within the container
             for (child in component.components) {
@@ -412,6 +395,7 @@ private fun extractTextFromListRenderedComponent(component: Component): String? 
             }
             null
         }
+
         else -> null
     }
 }
@@ -440,12 +424,12 @@ private fun String.removeHtmlTagsInternal(): String = replace(Regex("<[^>]*>"), 
 fun extractTableCellDisplayText(table: JTable, row: Int, column: Int): String? {
     // Get the model value first - we'll use this as a fallback
     val modelValue = runCatching { table.getValueAt(row, column) }.getOrNull()
-    
+
     // Try to get the display text from the renderer
     runCatching {
         val renderer = table.getCellRenderer(row, column)
         val renderedComponent = table.prepareRenderer(renderer, row, column)
-        
+
         // Extract text from the rendered component
         val text = extractTextFromRenderedComponentGeneric(renderedComponent)
         if (!text.isNullOrBlank()) {
@@ -454,12 +438,12 @@ fun extractTableCellDisplayText(table: JTable, row: Int, column: Int): String? {
     }.onFailure { e ->
         LOG.debug("Error extracting table cell display text via renderer: ${e.message}")
     }
-    
+
     // Fallback: try common interfaces for display name on the model value
     if (modelValue != null) {
         extractDisplayNameFromObject(modelValue)?.let { return it }
     }
-    
+
     // Final fallback: use model value's toString() if it doesn't look like an object reference
     val stringValue = modelValue?.toString()
     return if (stringValue != null && !looksLikeObjectReference(stringValue)) {
@@ -485,7 +469,7 @@ private fun looksLikeObjectReference(str: String): Boolean {
  */
 private fun extractDisplayNameFromObject(obj: Any): String? {
     val methodsToTry = listOf("getDisplayName", "getName", "getText", "getPresentableText")
-    
+
     for (methodName in methodsToTry) {
         runCatching {
             val method = obj.javaClass.getMethod(methodName)
@@ -516,6 +500,7 @@ private fun extractTextFromRenderedComponentGeneric(component: Component): Strin
                 component.getCharSequence(false).toString().takeIf { it.isNotBlank() }
             }.getOrNull()
         }
+
         is Container -> {
             // First check if the container itself is a SimpleColoredComponent subclass
             // (like ColoredTableCellRenderer which extends SimpleColoredComponent)
@@ -524,7 +509,7 @@ private fun extractTextFromRenderedComponentGeneric(component: Component): Strin
                     component.getCharSequence(false).toString().takeIf { it.isNotBlank() }
                 }.getOrNull()?.let { return it }
             }
-            
+
             // Search for text-containing children
             for (child in component.components) {
                 val text = extractTextFromRenderedComponentGeneric(child)
@@ -532,6 +517,7 @@ private fun extractTextFromRenderedComponentGeneric(component: Component): Strin
             }
             null
         }
+
         else -> null
     }
 }
@@ -567,12 +553,12 @@ fun getConvertedMousePoint(event: AnActionEvent, destination: Component): Point?
 fun getMiddlePath(src: Component, path: StringBuilder, separator: String = PathConstants.SEPARATOR) {
     // Find the ConfigurableEditor boundary - we only collect tabs within this boundary
     val configurableEditor = findParentByClassName(src, PathConstants.CONFIGURABLE_EDITOR_CLASS)
-    
+
     // Collect tabs and titled borders from src up to ConfigurableEditor (exclusive)
     // We traverse upward and collect in reverse order, then add them in correct order
     val middlePathItems = ArrayDeque<String>()
     var component: Component? = src
-    
+
     while (component != null && component !== configurableEditor) {
         // Check for JBTabs
         if (component is JBTabs) {
@@ -582,9 +568,9 @@ fun getMiddlePath(src: Component, path: StringBuilder, separator: String = PathC
                 }
             }
         }
-        
+
         // Check for JTabbedPane
-        if (component is javax.swing.JTabbedPane) {
+        if (component is JTabbedPane) {
             val selectedIndex = component.selectedIndex
             if (selectedIndex >= 0 && selectedIndex < component.tabCount) {
                 val tabTitle = component.getTitleAt(selectedIndex)
@@ -593,7 +579,7 @@ fun getMiddlePath(src: Component, path: StringBuilder, separator: String = PathC
                 }
             }
         }
-        
+
         // Check for titled border
         if (component is JComponent) {
             val border = component.border
@@ -604,10 +590,10 @@ fun getMiddlePath(src: Component, path: StringBuilder, separator: String = PathC
                 }
             }
         }
-        
+
         component = component.parent
     }
-    
+
     // Add collected items in correct order
     for (item in middlePathItems) {
         appendItem(path, item, separator)
@@ -629,7 +615,7 @@ fun getMiddlePath(src: Component, path: StringBuilder, separator: String = PathC
         findRadioButtonGroupLabel(src, configurableEditor)?.let { groupLabel ->
             appendItem(path, groupLabel, separator)
         }
-        
+
         // Find and add parent radio buttons in hierarchical structure
         // Parent radio buttons are above and less indented than the current radio button
         findParentRadioButtons(src, configurableEditor).forEach { parentText ->
@@ -928,13 +914,13 @@ fun appendItem(path: StringBuilder, item: String?, separator: String = PathConst
     if (item.isNullOrEmpty()) return
     val cleanItem = item.removeHtmlTags()
     if (cleanItem.isEmpty()) return
-    
+
     // Check for exact segment match (not just suffix match)
     // This prevents "CSS" from being filtered when path ends with "HTML/CSS"
-    val trimmedPath = path.trimEnd { it in PathSeparator.Companion.allSeparatorChars }.toString()
+    val trimmedPath = path.trimEnd { it in PathSeparator.allSeparatorChars }.toString()
     val lastSegment = trimmedPath.substringAfterLast(PathConstants.SEPARATOR.trim()).trim()
     if (lastSegment == cleanItem) return
-    
+
     path.append(cleanItem)
     // If the item ends with ":", it acts as a natural grouping label.
     // Append just a space instead of the full separator.
@@ -950,7 +936,7 @@ fun appendItem(path: StringBuilder, item: String?, separator: String = PathConst
 fun appendSrcText(path: StringBuilder, text: String?) {
     if (!text.isNullOrEmpty()) {
         // Avoid duplicates - check if path already ends with this text (ignoring trailing separators/spaces)
-        val trimmedPath = path.trimEnd { it in PathSeparator.Companion.allSeparatorChars }
+        val trimmedPath = path.trimEnd { it in PathSeparator.allSeparatorChars }
         if (!trimmedPath.endsWith(text)) {
             path.append(text)
         }
@@ -969,7 +955,7 @@ fun appendSrcText(path: StringBuilder, text: String?) {
  */
 fun trimFinalResult(path: StringBuilder): String {
     return path.toString()
-        .trimEnd { it in PathSeparator.Companion.allSeparatorChars }
+        .trimEnd { it in PathSeparator.allSeparatorChars }
         .removeHtmlTags()
         .removeAdvancedSettingIds()
 }
@@ -1290,14 +1276,14 @@ fun findAdjacentComponent(src: Component): Component? {
         for (i in (srcIndex + 1) until components.size) {
             val nextComponent = components[i]
             if (!nextComponent.isVisible) continue
-            
+
             // If it's a value component, check spatial alignment before returning
             if (isValueComponent(nextComponent)) {
                 if (isOnSameRow(srcScreenBounds, nextComponent)) {
                     return nextComponent
                 }
             }
-            
+
             // If it's a container, search inside for value components
             // but only return if found component is on the same row
             if (nextComponent is Container) {
@@ -1319,7 +1305,7 @@ fun findAdjacentComponent(src: Component): Component? {
  */
 private fun findValueComponentIn(container: Component): Component? {
     if (isValueComponent(container)) return container
-    
+
     if (container is Container) {
         for (child in container.components) {
             if (!child.isVisible) continue
@@ -1343,7 +1329,8 @@ private fun isValueComponent(component: Component): Boolean {
         // But allow combo boxes and text fields even if they're wide
         val className = component.javaClass.simpleName
         if (!className.contains("ComboBox", ignoreCase = true) &&
-            !className.contains("TextField", ignoreCase = true)) {
+            !className.contains("TextField", ignoreCase = true)
+        ) {
             return false
         }
     }
@@ -1364,6 +1351,7 @@ private fun isValueComponent(component: Component): Boolean {
             // ComboBoxButton is a JButton used by ComboBoxAction
             component.javaClass.simpleName.contains("ComboBoxButton", ignoreCase = true)
         }
+
         else -> {
             // Check for ComboBoxButton or similar wrapped components by class name
             val className = component.javaClass.simpleName
@@ -1432,11 +1420,11 @@ private fun getScreenBounds(component: Component): Rectangle? {
  */
 private fun isOnSameRow(srcBounds: Rectangle, component: Component): Boolean {
     val compBounds = getScreenBounds(component) ?: return false
-    
+
     val srcCenterY = srcBounds.y + srcBounds.height / 2
     val compCenterY = compBounds.y + compBounds.height / 2
     val maxCenterYDiff = min(srcBounds.height, compBounds.height) / 2 + 5
-    
+
     return kotlin.math.abs(srcCenterY - compCenterY) <= maxCenterYDiff
 }
 
@@ -1487,7 +1475,7 @@ private fun findBestCandidateInContainer(
                 val srcHeight = srcBottom - srcTop
                 val maxCenterYDiff = min(srcHeight, compHeight) / 2 + 5 // Allow small tolerance
                 val centerYDiff = kotlin.math.abs(srcCenterY - compCenterY)
-                
+
                 if (centerYDiff <= maxCenterYDiff) {
                     // Prefer components that are closer horizontally
                     val distance = horizontalDist
@@ -1530,14 +1518,17 @@ fun extractComponentValue(component: Component): String? {
         is JComboBox<*> -> {
             extractComboBoxDisplayText(component)
         }
+
         is JButton -> {
             // ComboBoxButton extends JButton and displays its text via getText()
             component.text?.takeIf { it.isNotBlank() }
         }
+
         is JTextField -> {
             // Return text even if empty (empty string), but null if text is null
             component.text ?: ""
         }
+
         is JCheckBox -> {
             if (component.text.isNullOrBlank()) {
                 if (component.isSelected) "Enabled" else "Disabled"
@@ -1545,19 +1536,24 @@ fun extractComponentValue(component: Component): String? {
                 component.text
             }
         }
+
         is JRadioButton -> {
             component.text?.takeIf { component.isSelected }
         }
+
         is JSpinner -> {
             component.value?.toString()
         }
+
         is JSlider -> {
             component.value.toString()
         }
+
         is JTextComponent -> {
             // Return text even if empty
             component.text ?: ""
         }
+
         else -> {
             // Try to extract via reflection for custom components
             extractValueViaReflection(component)
@@ -1634,6 +1630,7 @@ private fun extractTextFromRenderedComponent(component: Component): String? {
                 component.getCharSequence(false).toString().takeIf { it.isNotBlank() }
             }.getOrNull()
         }
+
         is Container -> {
             // Search for a JLabel or AbstractButton within the container
             for (child in component.components) {
@@ -1642,6 +1639,7 @@ private fun extractTextFromRenderedComponent(component: Component): String? {
             }
             null
         }
+
         else -> null
     }
 }
