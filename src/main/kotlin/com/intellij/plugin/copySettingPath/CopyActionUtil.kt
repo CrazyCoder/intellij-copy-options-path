@@ -619,6 +619,23 @@ fun getMiddlePath(src: Component, path: StringBuilder, separator: String = PathC
     findPrecedingTitledSeparator(src, configurableEditor)?.let { titledSeparator ->
         appendItem(path, titledSeparator.text, separator)
     }
+
+    // Add radio button group label and parent radio buttons if the source is a radio button
+    // Radio button groups in Kotlin UI DSL use a JLabel as the group title,
+    // positioned above the radio buttons (e.g., "Show tabs in:" group)
+    // Additionally, radio buttons can be nested in a hierarchy where child options
+    // depend on a parent radio button (e.g., "Squeeze tabs" depends on "One row, and if tabs don't fit:")
+    if (src is JRadioButton) {
+        findRadioButtonGroupLabel(src, configurableEditor)?.let { groupLabel ->
+            appendItem(path, groupLabel, separator)
+        }
+        
+        // Find and add parent radio buttons in hierarchical structure
+        // Parent radio buttons are above and less indented than the current radio button
+        findParentRadioButtons(src, configurableEditor).forEach { parentText ->
+            appendItem(path, parentText, separator)
+        }
+    }
 }
 
 /**
@@ -701,6 +718,199 @@ private fun findAllTitledSeparators(container: Container): List<TitledSeparator>
             result.add(comp)
         } else if (comp is Container) {
             result.addAll(findAllTitledSeparators(comp))
+        }
+    }
+
+    return result
+}
+
+/**
+ * Finds the group label for a radio button.
+ *
+ * In Kotlin UI DSL, radio button groups created with `buttonsGroup(title)` have
+ * a JLabel positioned above the radio buttons that serves as the group title.
+ * This function searches for such labels by looking for JLabels that:
+ * 1. Are positioned above the radio button (lower Y coordinate)
+ * 2. Are visible and showing on screen
+ * 3. Have text that looks like a group title (not a form field label with labelFor)
+ *
+ * @param radioButton The radio button to find the group label for.
+ * @param boundary The boundary component (typically ConfigurableEditor) to limit the search.
+ * @return The group label text, or null if not found.
+ */
+private fun findRadioButtonGroupLabel(radioButton: JRadioButton, boundary: Component?): String? {
+    val radioButtonY = getAbsoluteY(radioButton)
+    val radioButtonX = getAbsoluteX(radioButton)
+
+    // Determine the search container
+    val searchContainer = (boundary as? Container) ?: radioButton.parent ?: return null
+
+    // Find all JLabels within the boundary
+    val labels = findAllLabels(searchContainer)
+
+    var bestLabel: JLabel? = null
+    var bestLabelY = Int.MIN_VALUE
+
+    for (label in labels) {
+        // Skip labels that are not visible or not showing
+        if (!label.isShowing) continue
+
+        // Skip labels that have labelFor set to a non-radio-button component
+        // (these are form field labels, not group titles)
+        val labelFor = label.labelFor
+        if (labelFor != null && labelFor !is JRadioButton) continue
+
+        val labelText = label.text?.removeHtmlTags()?.trim()
+        if (labelText.isNullOrEmpty()) continue
+
+        // Skip labels that are just checkbox/radio button labels (same Y level, to the right)
+        val labelY = getAbsoluteY(label)
+        val labelX = getAbsoluteX(label)
+
+        // The group label must be above the radio button
+        if (labelY >= radioButtonY) continue
+
+        // The group label should be roughly aligned horizontally (not too far left or right)
+        // Allow some tolerance for indentation
+        val horizontalDistance = kotlin.math.abs(labelX - radioButtonX)
+        if (horizontalDistance > 200) continue
+
+        // Find the closest label above the radio button
+        if (labelY > bestLabelY) {
+            bestLabel = label
+            bestLabelY = labelY
+        }
+    }
+
+    // Return the label text as-is (including trailing colon if present)
+    // The appendItem function handles colons specially, treating them as grouping labels
+    return bestLabel?.text?.removeHtmlTags()?.trim()
+}
+
+/**
+ * Finds parent radio buttons in a hierarchical structure.
+ *
+ * In some Settings panels, radio buttons can be nested in a tree-like structure
+ * where child options depend on a parent radio button being selected.
+ * For example:
+ * - "One row, and if tabs don't fit:" (parent)
+ *   - "Squeeze tabs" (child, indented)
+ *   - "Scroll the tabs panel" (child, indented)
+ *
+ * This function finds radio buttons that are:
+ * 1. Above the current radio button (lower Y coordinate)
+ * 2. Less indented (smaller X coordinate) - indicating a higher level in the hierarchy
+ *
+ * @param radioButton The radio button to find parents for.
+ * @param boundary The boundary component (typically ConfigurableEditor) to limit the search.
+ * @return List of parent radio button texts, ordered from top-most to closest parent.
+ */
+private fun findParentRadioButtons(radioButton: JRadioButton, boundary: Component?): List<String> {
+    val radioButtonY = getAbsoluteY(radioButton)
+    val radioButtonX = getAbsoluteX(radioButton)
+
+    // Determine the search container
+    val searchContainer = (boundary as? Container) ?: radioButton.parent ?: return emptyList()
+
+    // Find all radio buttons within the boundary
+    val allRadioButtons = findAllRadioButtons(searchContainer)
+
+    // Find parent radio buttons: above and less indented than current
+    // A parent radio button has a smaller X (less indented) and smaller Y (above)
+    val parentCandidates = mutableListOf<Pair<JRadioButton, Int>>() // Pair of (radioButton, Y coordinate)
+
+    // Minimum indentation difference to consider something a parent level
+    // This helps distinguish between siblings and parent-child relationships
+    val minIndentDiff = 10
+
+    for (rb in allRadioButtons) {
+        if (rb === radioButton) continue
+        if (!rb.isShowing) continue
+
+        val rbY = getAbsoluteY(rb)
+        val rbX = getAbsoluteX(rb)
+
+        // Parent must be above (smaller Y) and less indented (smaller X)
+        if (rbY < radioButtonY && rbX < radioButtonX - minIndentDiff) {
+            parentCandidates.add(Pair(rb, rbY))
+        }
+    }
+
+    if (parentCandidates.isEmpty()) return emptyList()
+
+    // Sort by Y coordinate (top to bottom)
+    parentCandidates.sortBy { it.second }
+
+    // Build the hierarchy: for each level, only keep the closest parent
+    // (the one with the largest X that's still less than the current level)
+    val result = mutableListOf<String>()
+    var currentX = radioButtonX
+
+    // Process from bottom to top (closest to furthest parent)
+    for ((rb, _) in parentCandidates.reversed()) {
+        val rbX = getAbsoluteX(rb)
+        // Only include if this radio button is at a higher level (less indented)
+        // than our current tracking position
+        if (rbX < currentX - minIndentDiff) {
+            val text = rb.text?.removeHtmlTags()?.trim()
+            if (!text.isNullOrEmpty()) {
+                result.add(0, text) // Add at beginning to maintain top-to-bottom order
+                currentX = rbX // Update current level
+            }
+        }
+    }
+
+    return result
+}
+
+/**
+ * Recursively finds all JRadioButton components within a container.
+ */
+private fun findAllRadioButtons(container: Container): List<JRadioButton> {
+    val result = mutableListOf<JRadioButton>()
+
+    for (comp in container.components) {
+        if (comp is JRadioButton) {
+            result.add(comp)
+        }
+        if (comp is Container) {
+            result.addAll(findAllRadioButtons(comp))
+        }
+    }
+
+    return result
+}
+
+/**
+ * Gets the absolute X coordinate of a component on screen.
+ */
+private fun getAbsoluteX(component: Component): Int {
+    return runCatching {
+        component.locationOnScreen.x
+    }.getOrElse {
+        // Fallback to relative calculation if component is not showing
+        var x = 0
+        var current: Component? = component
+        while (current != null) {
+            x += current.x
+            current = current.parent
+        }
+        x
+    }
+}
+
+/**
+ * Recursively finds all JLabel components within a container.
+ */
+private fun findAllLabels(container: Container): List<JLabel> {
+    val result = mutableListOf<JLabel>()
+
+    for (comp in container.components) {
+        if (comp is JLabel) {
+            result.add(comp)
+        }
+        if (comp is Container) {
+            result.addAll(findAllLabels(comp))
         }
     }
 
