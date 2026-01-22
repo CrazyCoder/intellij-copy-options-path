@@ -69,17 +69,57 @@ fun getMiddlePath(src: Component, path: StringBuilder, separator: String = PathC
         appendItem(path, titledSeparator.text, separator)
     }
 
-    // Add toggle button hierarchy (parent toggle buttons first, then group label)
+    // Add toggle button hierarchy with group label in correct position
     if (src is JToggleButton) {
-        // Add parent toggle buttons hierarchy first (handles mixed checkbox/radio button nesting)
-        // This ensures the topmost "master" checkbox comes before any group labels
-        findParentToggleButtons(src, configurableEditor).forEach { parentText ->
-            appendItem(path, parentText, separator)
-        }
+        // Find the parent toggle buttons hierarchy
+        val parentToggleButtons = findParentToggleButtonComponents(src, configurableEditor)
 
-        // Add toggle button group label (for both radio buttons and checkboxes in labeled groups)
-        findToggleButtonGroupLabel(src, configurableEditor)?.let { groupLabel ->
+        // Find the group label for the SOURCE component (not the topmost parent)
+        val groupLabelInfo = findToggleButtonGroupLabelWithPosition(src, configurableEditor)
+
+        if (groupLabelInfo != null) {
+            val (groupLabel, groupLabelY) = groupLabelInfo
+
+            // Split parents into those ABOVE vs BELOW the group label
+            // Parents above the group label come first, then the group label, then parents below
+            val parentsAboveLabel = mutableListOf<JToggleButton>()
+            val parentsBelowLabel = mutableListOf<JToggleButton>()
+
+            for (parent in parentToggleButtons) {
+                val parentY = getAbsoluteY(parent)
+                if (parentY < groupLabelY) {
+                    parentsAboveLabel.add(parent)
+                } else {
+                    parentsBelowLabel.add(parent)
+                }
+            }
+
+            // Add parents above the group label first
+            parentsAboveLabel.forEach { parent ->
+                val parentText = parent.text?.removeHtmlTags()?.trim()
+                if (!parentText.isNullOrEmpty()) {
+                    appendItem(path, parentText, separator)
+                }
+            }
+
+            // Add the group label
             appendItem(path, groupLabel, separator)
+
+            // Add parents below the group label (these are part of the same labeled group)
+            parentsBelowLabel.forEach { parent ->
+                val parentText = parent.text?.removeHtmlTags()?.trim()
+                if (!parentText.isNullOrEmpty()) {
+                    appendItem(path, parentText, separator)
+                }
+            }
+        } else {
+            // No group label - just add all parents
+            parentToggleButtons.forEach { parent ->
+                val parentText = parent.text?.removeHtmlTags()?.trim()
+                if (!parentText.isNullOrEmpty()) {
+                    appendItem(path, parentText, separator)
+                }
+            }
         }
     }
 }
@@ -213,16 +253,30 @@ private fun findPrecedingTitledSeparator(component: Component, boundary: Compone
  * @return The group label text, or null if not found.
  */
 private fun findToggleButtonGroupLabel(toggleButton: JToggleButton, boundary: Component?): String? {
+    return findToggleButtonGroupLabelWithPosition(toggleButton, boundary)?.first
+}
+
+/**
+ * Finds the group label for a toggle button and returns both the label text and its Y position.
+ *
+ * This variant is useful when we need to determine whether parent toggle buttons
+ * are above or below the group label in the visual hierarchy.
+ *
+ * @param toggleButton The toggle button to find the group label for.
+ * @param boundary The boundary component to limit the search.
+ * @return A Pair of (label text, Y position), or null if not found.
+ */
+private fun findToggleButtonGroupLabelWithPosition(toggleButton: JToggleButton, boundary: Component?): Pair<String, Int>? {
     val buttonY = getAbsoluteY(toggleButton)
     val buttonX = getAbsoluteX(toggleButton)
     val searchContainer = (boundary as? Container) ?: toggleButton.parent ?: return null
 
     // First, check for same-row label (horizontal layout like "Placement: (Top) (Bottom)")
-    val sameRowLabel = findSameRowLabel(toggleButton, buttonY, buttonX, searchContainer)
-    if (sameRowLabel != null) return sameRowLabel
+    val sameRowResult = findSameRowLabelWithPosition(toggleButton, buttonY, buttonX, searchContainer)
+    if (sameRowResult != null) return sameRowResult
 
     // Fall back to above-label detection (vertical layout)
-    return findAboveLabel(toggleButton, buttonY, buttonX, searchContainer)
+    return findAboveLabelWithPosition(toggleButton, buttonY, buttonX, searchContainer)
 }
 
 /**
@@ -235,8 +289,21 @@ private fun findSameRowLabel(
     buttonX: Int,
     searchContainer: Container
 ): String? {
+    return findSameRowLabelWithPosition(toggleButton, buttonY, buttonX, searchContainer)?.first
+}
+
+/**
+ * Finds a label on the same row to the left of the toggle button, returning both text and Y position.
+ */
+private fun findSameRowLabelWithPosition(
+    toggleButton: JToggleButton,
+    buttonY: Int,
+    buttonX: Int,
+    searchContainer: Container
+): Pair<String, Int>? {
     var bestLabel: JLabel? = null
     var bestLabelX = Int.MIN_VALUE
+    var bestLabelY = 0
 
     findAllComponentsOfType<JLabel>(searchContainer).forEach { label ->
         if (!label.isShowing) return@forEach
@@ -269,10 +336,12 @@ private fun findSameRowLabel(
         if (labelX > bestLabelX) {
             bestLabel = label
             bestLabelX = labelX
+            bestLabelY = labelY
         }
     }
 
-    return bestLabel?.text?.removeHtmlTags()?.trim()
+    val text = bestLabel?.text?.removeHtmlTags()?.trim() ?: return null
+    return Pair(text, bestLabelY)
 }
 
 /**
@@ -285,6 +354,18 @@ private fun findAboveLabel(
     buttonX: Int,
     searchContainer: Container
 ): String? {
+    return findAboveLabelWithPosition(toggleButton, buttonY, buttonX, searchContainer)?.first
+}
+
+/**
+ * Finds a label above the toggle button, returning both text and Y position.
+ */
+private fun findAboveLabelWithPosition(
+    toggleButton: JToggleButton,
+    buttonY: Int,
+    buttonX: Int,
+    searchContainer: Container
+): Pair<String, Int>? {
     var bestLabel: JLabel? = null
     var bestLabelY = Int.MIN_VALUE
 
@@ -361,7 +442,7 @@ private fun findAboveLabel(
         return null
     }
 
-    return bestLabelText
+    return Pair(bestLabelText, bestLabelY)
 }
 
 /**
@@ -669,6 +750,186 @@ private fun findParentToggleButtons(toggleButton: JToggleButton, boundary: Compo
 }
 
 /**
+ * Finds all parent toggle buttons (both checkboxes and radio buttons) as components.
+ *
+ * This is a variant of [findParentToggleButtons] that returns the actual components
+ * instead of their text labels. This is useful when we need to perform further analysis
+ * on the parent components themselves (e.g., finding the group label for the topmost parent).
+ *
+ * @param toggleButton The toggle button to find parents for.
+ * @param boundary The boundary component (typically ConfigurableEditor) to limit the search.
+ * @return List of parent toggle button components, ordered from top-most to closest parent.
+ */
+private fun findParentToggleButtonComponents(toggleButton: JToggleButton, boundary: Component?): List<JToggleButton> {
+    val buttonY = getAbsoluteY(toggleButton)
+    val buttonX = getAbsoluteX(toggleButton)
+    val searchContainer = (boundary as? Container) ?: toggleButton.parent ?: return emptyList()
+
+    // Collect all TitledSeparators with their positions for boundary checking
+    data class SeparatorPos(val y: Int, val x: Int)
+    val titledSeparators = mutableListOf<SeparatorPos>()
+    findAllComponentsOfType<TitledSeparator>(searchContainer).forEach { separator ->
+        if (!separator.isShowing) return@forEach
+        val sepY = getAbsoluteY(separator)
+        if (sepY < buttonY) {
+            titledSeparators.add(SeparatorPos(sepY, getAbsoluteX(separator)))
+        }
+    }
+
+    // Detect if this is a multi-column layout
+    val isMultiColumnLayout = titledSeparators.any { sep1 ->
+        titledSeparators.any { sep2 ->
+            sep1 !== sep2 &&
+                    kotlin.math.abs(sep1.y - sep2.y) < LayoutConstants.SAME_ROW_THRESHOLD &&
+                    kotlin.math.abs(sep1.x - sep2.x) > LayoutConstants.MAX_HORIZONTAL_DISTANCE
+        }
+    }
+
+    // Find the closest TitledSeparator above the target button
+    val closestSeparatorY = run {
+        var bestY = Int.MIN_VALUE
+        for (sep in titledSeparators) {
+            if (sep.y <= bestY) continue
+
+            if (isMultiColumnLayout) {
+                val horizontalDiff = buttonX - sep.x
+                if (horizontalDiff < -LayoutConstants.MIN_INDENT_DIFF) continue
+                val closerSeparatorExists = titledSeparators.any { other ->
+                    other !== sep &&
+                            other.y < buttonY &&
+                            kotlin.math.abs(buttonX - other.x) < kotlin.math.abs(buttonX - sep.x)
+                }
+                if (closerSeparatorExists && horizontalDiff > LayoutConstants.MAX_HORIZONTAL_DISTANCE) continue
+            }
+
+            bestY = sep.y
+        }
+        bestY
+    }
+
+    // Collect all group labels (ending with ":")
+    data class GroupLabel(val y: Int, val x: Int)
+    val groupLabels = mutableListOf<GroupLabel>()
+    findAllComponentsOfType<JLabel>(searchContainer).forEach { label ->
+        if (!label.isShowing) return@forEach
+        val labelText = label.text?.removeHtmlTags()?.trim()
+        if (!labelText.isNullOrEmpty() && labelText.endsWith(":")) {
+            val labelY = getAbsoluteY(label)
+            if (labelY < buttonY) {
+                groupLabels.add(GroupLabel(labelY, getAbsoluteX(label)))
+            }
+        }
+    }
+
+    // Collect all toggle buttons with their positions
+    val allToggleButtons = mutableListOf<ToggleButtonPosition>()
+    findAllComponentsOfType<JToggleButton>(searchContainer).forEach { tb ->
+        if (!tb.isShowing) return@forEach
+        if (tb !is JCheckBox && tb !is JRadioButton) return@forEach
+        allToggleButtons.add(ToggleButtonPosition(tb, getAbsoluteY(tb), getAbsoluteX(tb)))
+    }
+
+    val gridSiblings = findGridSiblings(toggleButton, buttonY, buttonX, allToggleButtons)
+
+    // Find the topmost checkbox
+    var topmostCheckbox: JCheckBox? = null
+    var topmostCheckboxY = Int.MAX_VALUE
+    var topmostCheckboxX = 0
+    findAllComponentsOfType<JCheckBox>(searchContainer).forEach { cb ->
+        if (cb === toggleButton || !cb.isShowing) return@forEach
+        val cbY = getAbsoluteY(cb)
+        if (cbY < topmostCheckboxY) {
+            topmostCheckboxY = cbY
+            topmostCheckboxX = getAbsoluteX(cb)
+            topmostCheckbox = cb
+        }
+    }
+
+    val isTopmostActuallyMaster = topmostCheckbox != null && run {
+        var firstSeparatorY = Int.MAX_VALUE
+        titledSeparators.forEach { sep ->
+            if (sep.y in (topmostCheckboxY + 1) until firstSeparatorY) {
+                firstSeparatorY = sep.y
+            }
+        }
+        findAllComponentsOfType<JToggleButton>(searchContainer).any { tb ->
+            if (tb === topmostCheckbox || !tb.isShowing) return@any false
+            if (tb !is JCheckBox && tb !is JRadioButton) return@any false
+            val tbX = getAbsoluteX(tb)
+            val tbY = getAbsoluteY(tb)
+            tbX > topmostCheckboxX + LayoutConstants.MIN_INDENT_DIFF &&
+                    tbY > topmostCheckboxY && tbY < firstSeparatorY
+        }
+    }
+
+    // First pass: collect all potential parent candidates
+    data class Candidate(val tb: JToggleButton, val y: Int, val x: Int)
+    val allCandidates = mutableListOf<Candidate>()
+
+    findAllComponentsOfType<JToggleButton>(searchContainer).forEach { tb ->
+        if (tb === toggleButton || !tb.isShowing) return@forEach
+        if (tb !is JCheckBox && tb !is JRadioButton) return@forEach
+
+        val tbY = getAbsoluteY(tb)
+        val tbX = getAbsoluteX(tb)
+
+        if (tbY >= buttonY) return@forEach
+        if (tbY < closestSeparatorY) return@forEach
+        if (gridSiblings.contains(tb)) return@forEach
+
+        if (isMultiColumnLayout) {
+            val horizontalDistance = kotlin.math.abs(tbX - buttonX)
+            if (horizontalDistance > LayoutConstants.MAX_HORIZONTAL_DISTANCE) return@forEach
+        }
+
+        val isLessIndented = tbX < buttonX - LayoutConstants.MIN_INDENT_DIFF
+        val isTopmostAtSameLevel = isTopmostActuallyMaster && tb === topmostCheckbox &&
+                kotlin.math.abs(tbX - buttonX) <= LayoutConstants.MIN_INDENT_DIFF
+
+        if (isLessIndented || isTopmostAtSameLevel) {
+            allCandidates.add(Candidate(tb, tbY, tbX))
+        }
+    }
+
+    // Second pass: filter candidates
+    val parentCandidates = mutableListOf<Pair<JToggleButton, Int>>()
+    val candidatesByLevel = allCandidates.groupBy { it.x }
+
+    for (candidate in allCandidates) {
+        if (isTopmostActuallyMaster && candidate.tb === topmostCheckbox) {
+            parentCandidates.add(Pair(candidate.tb, candidate.y))
+            continue
+        }
+
+        if (candidate.tb is JRadioButton) {
+            val sameLevelCandidates = candidatesByLevel[candidate.x] ?: emptyList()
+            val hasOtherRadioButtonsAtSameLevel = sameLevelCandidates.any {
+                it !== candidate && it.tb is JRadioButton
+            }
+            if (hasOtherRadioButtonsAtSameLevel) {
+                if (!candidate.tb.isSelected) continue
+            }
+        }
+
+        val hasBlockingGroupLabel = groupLabels.any { (labelY, labelX) ->
+            if (labelY !in (candidate.y + 1) until buttonY) return@any false
+            if (buttonX <= labelX + LayoutConstants.MIN_INDENT_DIFF) return@any false
+            val hasIntermediateParentAtLabelLevel = allCandidates.any { other ->
+                other !== candidate &&
+                        other.y in (labelY + 1) until buttonY &&
+                        kotlin.math.abs(other.x - labelX) <= LayoutConstants.MIN_INDENT_DIFF
+            }
+            !hasIntermediateParentAtLabelLevel
+        }
+        if (!hasBlockingGroupLabel) {
+            parentCandidates.add(Pair(candidate.tb, candidate.y))
+        }
+    }
+
+    return buildComponentHierarchyFromCandidates(parentCandidates, buttonX)
+}
+
+/**
  * Detects grid siblings - toggle buttons that are part of the same grid as the target.
  *
  * A grid is a layout where multiple checkboxes are arranged in rows and columns:
@@ -770,13 +1031,32 @@ private fun <T : JToggleButton> buildHierarchyFromCandidates(
     candidates: MutableList<Pair<T, Int>>,
     startX: Int
 ): List<String> {
+    return buildComponentHierarchyFromCandidates(candidates, startX).mapNotNull { component ->
+        component.text?.removeHtmlTags()?.trim()?.takeIf { it.isNotEmpty() }
+    }
+}
+
+/**
+ * Builds a hierarchy of parent components from sorted candidates.
+ *
+ * This function takes a list of parent candidates (toggle buttons with their Y coordinates)
+ * and builds a hierarchy based on indentation levels (X coordinates).
+ *
+ * @param candidates List of (component, Y coordinate) pairs representing potential parents.
+ * @param startX The X coordinate of the child component to start building hierarchy from.
+ * @return List of parent components, ordered from top-most to closest parent.
+ */
+private fun <T : JToggleButton> buildComponentHierarchyFromCandidates(
+    candidates: MutableList<Pair<T, Int>>,
+    startX: Int
+): List<T> {
     if (candidates.isEmpty()) return emptyList()
 
     // Sort by Y coordinate (top to bottom)
     candidates.sortBy { it.second }
 
     // Build the hierarchy by walking from closest to farthest parent
-    val result = mutableListOf<String>()
+    val result = mutableListOf<T>()
     var currentX = startX
 
     for ((component, _) in candidates.reversed()) {
@@ -784,7 +1064,7 @@ private fun <T : JToggleButton> buildHierarchyFromCandidates(
         if (componentX < currentX - LayoutConstants.MIN_INDENT_DIFF) {
             val text = component.text?.removeHtmlTags()?.trim()
             if (!text.isNullOrEmpty()) {
-                result.add(0, text)
+                result.add(0, component)
                 currentX = componentX
             }
         }
