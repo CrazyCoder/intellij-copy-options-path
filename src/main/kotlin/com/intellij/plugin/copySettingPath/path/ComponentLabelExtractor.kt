@@ -33,6 +33,10 @@ object ComponentLabelExtractor {
      * an adjacent value component (combo box, text field, etc.). In such cases,
      * we find the adjacent component and append its current value.
      *
+     * Special case: For toggle buttons (radio buttons, checkboxes) where the label
+     * ends with ":" (either from labeledBy or from a sibling's group label),
+     * the value is the button's own text, not an adjacent component.
+     *
      * @param component The component to extract label from.
      * @param path StringBuilder to append label to.
      */
@@ -44,13 +48,40 @@ object ComponentLabelExtractor {
 
         // If label ends with ":", try to append adjacent value
         if (label.endsWith(":") && isAdjacentValueIncluded()) {
-            findAdjacentValue(component)?.let { value ->
-                if (value.isNotBlank()) {
+            // Special case: for toggle buttons where label came from labeledBy or group label,
+            // the value is the button's own text, not an adjacent component
+            if (component is JToggleButton && isToggleButtonGroupLabel(component, label)) {
+                val buttonText = component.text?.removeHtmlTags()?.trim()
+                if (!buttonText.isNullOrBlank()) {
                     path.append(" ")
-                    path.append(value)
+                    path.append(buttonText)
+                }
+            } else {
+                findAdjacentValue(component)?.let { value ->
+                    if (value.isNotBlank()) {
+                        path.append(" ")
+                        path.append(value)
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * Checks if the label for a toggle button came from labeledBy or a sibling's group label.
+     * This is used to determine if the button's own text should be used as the value.
+     */
+    private fun isToggleButtonGroupLabel(component: JToggleButton, label: String): Boolean {
+        // Check if component has labeledBy
+        val labeledBy = component.getClientProperty("labeledBy")
+        if (labeledBy is JLabel) {
+            return true
+        }
+
+        // Check if label came from a sibling's group label (which means it ends with ":")
+        // If findGroupLabelFromSiblings would return this label, then it's a group label
+        val groupLabel = findGroupLabelFromSiblings(component)
+        return groupLabel == label
     }
 
     /**
@@ -58,7 +89,8 @@ object ComponentLabelExtractor {
      *
      * Follows IntelliJ's CopySettingsPathAction pattern:
      * 1. Check labeledBy client property (standard Swing/Kotlin UI DSL pattern)
-     * 2. Fall back to component's own text
+     * 2. For toggle buttons without labeledBy, check sibling buttons for a shared group label
+     * 3. Fall back to component's own text
      *
      * @param component The component to get label for.
      * @return The label text, or null if not found.
@@ -73,6 +105,14 @@ object ComponentLabelExtractor {
                     return text
                 }
             }
+
+            // For toggle buttons without labeledBy, check if sibling buttons have a shared group label
+            if (component is JToggleButton) {
+                val groupLabel = findGroupLabelFromSiblings(component)
+                if (groupLabel != null) {
+                    return groupLabel
+                }
+            }
         }
 
         // Fall back to component's own text
@@ -82,6 +122,34 @@ object ComponentLabelExtractor {
             is AbstractButton -> component.text?.removeHtmlTags()?.trim()?.takeIf { it.isNotEmpty() }
             else -> null
         }
+    }
+
+    /**
+     * For a toggle button without labeledBy, looks for a sibling toggle button
+     * that has a labeledBy label ending with ":". This handles cases where
+     * only the first button in a group has the labeledBy property set.
+     *
+     * @param button The toggle button to find the group label for.
+     * @return The group label text if found, or null.
+     */
+    private fun findGroupLabelFromSiblings(button: JToggleButton): String? {
+        val parent = button.parent ?: return null
+
+        // Look for sibling toggle buttons with labeledBy that ends with ":"
+        for (sibling in parent.components) {
+            if (sibling === button) continue
+            if (sibling !is JToggleButton) continue
+
+            val labeledBy = sibling.getClientProperty("labeledBy")
+            if (labeledBy is JLabel) {
+                val labelText = labeledBy.text?.removeHtmlTags()?.trim()
+                if (!labelText.isNullOrEmpty() && labelText.endsWith(":")) {
+                    return labelText
+                }
+            }
+        }
+
+        return null
     }
 
     /**
