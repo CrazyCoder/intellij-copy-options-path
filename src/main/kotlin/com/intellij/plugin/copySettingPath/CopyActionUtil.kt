@@ -714,7 +714,12 @@ fun appendItem(path: StringBuilder, item: String?, separator: String = PathConst
     if (item.isNullOrEmpty()) return
     val cleanItem = item.removeHtmlTags()
     if (cleanItem.isEmpty()) return
-    if (path.trimEnd { it in PathSeparator.Companion.allSeparatorChars }.endsWith(cleanItem)) return
+    
+    // Check for exact segment match (not just suffix match)
+    // This prevents "CSS" from being filtered when path ends with "HTML/CSS"
+    val trimmedPath = path.trimEnd { it in PathSeparator.Companion.allSeparatorChars }.toString()
+    val lastSegment = trimmedPath.substringAfterLast(PathConstants.SEPARATOR.trim()).trim()
+    if (lastSegment == cleanItem) return
     
     path.append(cleanItem)
     // If the item ends with ":", it acts as a natural grouping label.
