@@ -230,25 +230,18 @@ fun getConvertedMousePoint(event: AnActionEvent, destination: Component): Point?
 fun getMiddlePath(src: Component, path: StringBuilder, separator: String = PathConstants.SEPARATOR) {
     // Add selected tab name if present
     UIUtil.getParentOfType(JBTabs::class.java, src)?.selectedInfo?.text?.let { tabText ->
-        if (tabText.isNotEmpty()) {
-            path.append(tabText).append(separator)
-        }
+        appendItem(path, tabText, separator)
     }
 
     // Add titled separator group name if present (e.g., "Java" section in Auto Import settings)
     findPrecedingTitledSeparator(src)?.let { titledSeparator ->
-        val separatorText = titledSeparator.text
-        if (!separatorText.isNullOrEmpty()) {
-            appendItem(path, separatorText, separator)
-        }
+        appendItem(path, titledSeparator.text, separator)
     }
 
     // Add titled border text if present
     (src.parent as? JPanel)?.let { parent ->
         (parent.border as? IdeaTitledBorder)?.title?.let { title ->
-            if (title.isNotEmpty()) {
-                appendItem(path, title, separator)
-            }
+            appendItem(path, title, separator)
         }
     }
 }
@@ -341,9 +334,15 @@ private fun findAllTitledSeparators(container: Container): List<TitledSeparator>
  * @param separator The separator to use between path components.
  */
 fun appendItem(path: StringBuilder, item: String?, separator: String = PathConstants.SEPARATOR) {
-    if (!item.isNullOrEmpty() && !path.trimEnd { it in PathSeparator.Companion.allSeparatorChars }.endsWith(item)) {
-        path.append(item).append(separator)
-    }
+    if (item.isNullOrEmpty()) return
+    val cleanItem = item.removeHtmlTags()
+    if (cleanItem.isEmpty()) return
+    if (path.trimEnd { it in PathSeparator.Companion.allSeparatorChars }.endsWith(cleanItem)) return
+    
+    path.append(cleanItem)
+    // If the item ends with ":", it acts as a natural grouping label.
+    // Append just a space instead of the full separator.
+    path.append(if (cleanItem.endsWith(":")) " " else separator)
 }
 
 /**
@@ -354,7 +353,11 @@ fun appendItem(path: StringBuilder, item: String?, separator: String = PathConst
  */
 fun appendSrcText(path: StringBuilder, text: String?) {
     if (!text.isNullOrEmpty()) {
-        path.append(text)
+        // Avoid duplicates - check if path already ends with this text (ignoring trailing separators/spaces)
+        val trimmedPath = path.trimEnd { it in PathSeparator.Companion.allSeparatorChars }
+        if (!trimmedPath.endsWith(text)) {
+            path.append(text)
+        }
     }
 }
 
