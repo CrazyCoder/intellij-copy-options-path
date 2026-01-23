@@ -88,12 +88,17 @@ object SettingsPathExtractor {
     /**
      * Extracts the settings path from a SettingsDialog instance.
      *
+     * Note: We use reflection to access the editor to avoid direct references to internal APIs.
+     * The SettingsDialog.getEditor() method returns AbstractEditor which is @ApiStatus.Internal.
+     *
      * @param settings The SettingsDialog to extract path from.
      * @return The formatted path string, or null if extraction fails.
      */
     private fun getPathFromSettingsDialog(settings: SettingsDialog): String? {
         return runCatching {
-            val editor = settings.editor
+            // Use reflection to get the editor to avoid internal API reference
+            // SettingsDialog.getEditor() returns AbstractEditor which is @ApiStatus.Internal
+            val editor = getEditorViaReflection(settings) ?: return@runCatching getPathFromSettingsDialogLegacy(settings)
             val editorClassName = editor.javaClass.name
             LOG.debug("Editor class: $editorClassName")
 
@@ -242,6 +247,25 @@ object SettingsPathExtractor {
      */
     private fun findSettingsDialog(component: Component): SettingsDialog? {
         return com.intellij.openapi.ui.DialogWrapper.findInstance(component) as? SettingsDialog
+    }
+
+    /**
+     * Gets the editor from a SettingsDialog via reflection.
+     *
+     * This avoids direct reference to the internal AbstractEditor class that is returned
+     * by SettingsDialog.getEditor().
+     *
+     * @param settings The SettingsDialog to get the editor from.
+     * @return The editor as Any, or null if reflection fails.
+     */
+    private fun getEditorViaReflection(settings: SettingsDialog): Any? {
+        return runCatching {
+            // Try the public getter method first (via reflection to avoid type reference)
+            val getEditorMethod = settings.javaClass.getMethod("getEditor")
+            getEditorMethod.invoke(settings)
+        }.onFailure { e ->
+            LOG.debug("Failed to get editor via getEditor() method: ${e.message}")
+        }.getOrNull()
     }
 
     /**
