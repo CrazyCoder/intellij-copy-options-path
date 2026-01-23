@@ -57,9 +57,11 @@ object SettingsPathExtractor {
         // 3. Collect middle path (tabs, titled borders) within ConfigurableEditor
         appendMiddlePath(src, configurableEditor, path, separator)
 
-        // 4. Add TitledSeparator if present
-        findPrecedingTitledSeparator(src, configurableEditor)?.let { separatorComponent ->
-            appendItem(path, separatorComponent.text, separator)
+        // 4. Add TitledSeparator if present (but skip if src is itself a TitledSeparator or its child)
+        if (!isInsideTitledSeparator(src)) {
+            findPrecedingTitledSeparator(src, configurableEditor)?.let { separatorComponent ->
+                appendItem(path, separatorComponent.text, separator)
+            }
         }
     }
 
@@ -306,5 +308,26 @@ object SettingsPathExtractor {
         }
 
         return bestSeparator
+    }
+
+    /**
+     * Checks if the component is a TitledSeparator or is contained within one.
+     *
+     * When clicking directly on a group title (TitledSeparator), we should not
+     * search for a preceding TitledSeparator, as that would add an extra parent
+     * group to the path.
+     *
+     * @param component The component to check.
+     * @return true if the component is or is inside a TitledSeparator.
+     */
+    private fun isInsideTitledSeparator(component: Component): Boolean {
+        var current: Component? = component
+        while (current != null) {
+            if (current is TitledSeparator) {
+                return true
+            }
+            current = current.parent
+        }
+        return false
     }
 }
