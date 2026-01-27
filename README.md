@@ -98,12 +98,26 @@ You can customize how path components are separated in the copied text:
 
 #### When to Enable Mouse Interception
 
-Enable the mouse interception setting if you want Ctrl/Cmd+Click to **only** copy the path without triggering the
+Enable the mouse interception setting if you want the mouse shortcut to **only** copy the path without triggering the
 underlying UI element. This is useful when:
 
-- You frequently Ctrl+Click on checkboxes and don't want them to toggle
+- You frequently click on checkboxes and don't want them to toggle
 - You want to copy paths from buttons without activating them
 - **You want to copy main menu paths** — Menu path copying only works when interception is enabled
+
+#### Shortcut Conflict Warning
+
+The default **Ctrl+Click** (or **Cmd+Click** on macOS) shortcut conflicts with the standard IDE behavior for **multiple
+selection** in lists and trees. When mouse interception is enabled with the default shortcut, you won't be able to
+use Ctrl/Cmd+Click to select multiple items.
+
+**Recommendation:** To avoid this conflict, change the shortcut in **Settings | Keymap** to use:
+
+- **Right-click shortcuts** — e.g., **Ctrl+Right Click** or **Shift+Right Click**
+- **Additional modifiers** — e.g., **Ctrl+Shift+Click** or **Ctrl+Alt+Click**
+
+The plugin will show a warning notification when you enable mouse interception with the default shortcut, with a direct
+link to the Keymap settings to configure a custom shortcut.
 
 #### When to Keep Mouse Interception Disabled (Default)
 
