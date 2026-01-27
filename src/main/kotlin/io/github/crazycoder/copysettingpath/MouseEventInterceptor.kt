@@ -354,6 +354,7 @@ class MouseEventInterceptor : Disposable {
             val result = trimFinalResult(StringBuilder(path))
             LOG.debug { "Copying menu path: $result" }
             CopyPasteManager.getInstance().setContents(TextTransferable(result, result))
+            showCopiedToast(result)
         } else {
             LOG.debug { "Could not extract menu path from component: $component" }
         }

@@ -10,6 +10,7 @@ import com.intellij.util.ui.TextTransferable
 import io.github.crazycoder.copysettingpath.LOG
 import io.github.crazycoder.copysettingpath.PathSeparator
 import io.github.crazycoder.copysettingpath.path.PathBuilder
+import io.github.crazycoder.copysettingpath.showCopiedToast
 import io.github.crazycoder.copysettingpath.trimFinalResult
 
 /**
@@ -45,6 +46,7 @@ class CopySettingPath : DumbAwareAction() {
         LOG.debug("Selected path: $result")
         e.inputEvent?.consume()
         CopyPasteManager.getInstance().setContents(TextTransferable(result, result))
+        showCopiedToast(result)
     }
 
     @Suppress("CompanionObjectInExtension")

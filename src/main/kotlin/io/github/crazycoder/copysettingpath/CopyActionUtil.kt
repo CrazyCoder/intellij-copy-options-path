@@ -1,8 +1,17 @@
 package io.github.crazycoder.copysettingpath
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.options.advanced.AdvancedSettings
+import com.intellij.openapi.ui.popup.Balloon
+import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.ui.awt.RelativePoint
+import com.intellij.util.concurrency.AppExecutorUtil
 import java.awt.Component
 import java.awt.Container
+import java.awt.MouseInfo
+import java.awt.Point
+import java.util.concurrent.TimeUnit
 
 /**
  * Core utilities and constants for the Copy Setting Path plugin.
@@ -171,6 +180,46 @@ fun trimFinalResult(path: StringBuilder): String {
         .trimEnd { it in PathSeparator.allSeparatorChars }
         .removeHtmlTags()
         .removeAdvancedSettingIds()
+}
+
+// ============================================================================
+// Toast Notification Functions
+// ============================================================================
+
+/** Advanced setting ID for toast notification configuration. */
+private const val SHOW_TOAST_SETTING_ID = "copy.setting.path.show.toast"
+
+/** Duration in seconds before the toast auto-hides. */
+private const val TOAST_DISPLAY_DURATION_SECONDS = 2L
+
+/**
+ * Shows a brief toast notification near the mouse cursor
+ * displaying the path that was copied to clipboard.
+ *
+ * The toast is only shown if the "copy.setting.path.show.toast" advanced setting is enabled.
+ *
+ * @param copiedPath The path that was copied to clipboard, to display in the toast.
+ */
+fun showCopiedToast(copiedPath: String) {
+    if (!AdvancedSettings.getBoolean(SHOW_TOAST_SETTING_ID)) return
+
+    val mouseLocation = MouseInfo.getPointerInfo()?.location ?: return
+    val point = RelativePoint(Point(mouseLocation.x, mouseLocation.y))
+
+    val balloon = JBPopupFactory.getInstance()
+        .createHtmlTextBalloonBuilder(copiedPath, null, null, null)
+        .setAnimationCycle(0)
+        .setRequestFocus(false)
+        .createBalloon()
+
+    balloon.show(point, Balloon.Position.above)
+
+    // Schedule auto-hide after delay on EDT
+    AppExecutorUtil.getAppScheduledExecutorService().schedule(
+        { ApplicationManager.getApplication().invokeLater { balloon.hide() } },
+        TOAST_DISPLAY_DURATION_SECONDS,
+        TimeUnit.SECONDS
+    )
 }
 
 // ============================================================================
