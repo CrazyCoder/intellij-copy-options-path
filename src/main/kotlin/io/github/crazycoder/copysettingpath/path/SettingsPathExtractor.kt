@@ -98,7 +98,8 @@ object SettingsPathExtractor {
         return runCatching {
             // Use reflection to get the editor to avoid internal API reference
             // SettingsDialog.getEditor() returns AbstractEditor which is @ApiStatus.Internal
-            val editor = getEditorViaReflection(settings) ?: return@runCatching getPathFromSettingsDialogLegacy(settings)
+            val editor =
+                getEditorViaReflection(settings) ?: return@runCatching getPathFromSettingsDialogLegacy(settings)
             val editorClassName = editor.javaClass.name
             LOG.debug("Editor class: $editorClassName")
 
