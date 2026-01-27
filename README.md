@@ -68,7 +68,8 @@ Menu path copying is **not supported** when the IDE uses native (OS-provided) me
 - **macOS:** Native menu bar is enabled by default. Menu path copying will not work.
 - **Linux:** Native menu integration (global menu) may be enabled depending on your desktop environment.
 
-> **Note:** This plugin is incompatible with the legacy **Copy Option Path** plugin (`com.intellij.plugin.copy.options`).
+> **Note:** This plugin is incompatible with the legacy **Copy Option Path** plugin (
+`com.intellij.plugin.copy.options`).
 > If you have the old plugin installed, please **uninstall it** before installing this plugin.
 > The IDE will automatically prevent both plugins from running simultaneously.
 
@@ -123,7 +124,7 @@ link to the Keymap settings to configure a custom shortcut.
 
 Keep the default (disabled) if:
 
-- You rarely use Ctrl/Cmd+Click on interactive elements
+- You rarely use the shortcut on interactive elements
 - You prefer the standard IDE behavior where Ctrl/Cmd+Click may also trigger the component
 - You want to minimize any potential interference with other IDE features that use Ctrl/Cmd+Click
 

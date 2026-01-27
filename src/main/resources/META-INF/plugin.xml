@@ -4,11 +4,13 @@
   <vendor email="sbaranov@gmail.com" url="https://github.com/CrazyCoder">Serge Baranov</vendor>
 
   <description><![CDATA[
-    <p>Adds <b>Copy Setting Path</b> action which copies the full navigation path to any UI setting in IDE dialogs or main menu items to the clipboard.</p>
+    <p>Adds <b>Copy Setting Path</b> action which copies the full navigation path to any UI setting in IDE dialogs or
+      main menu items to the clipboard.</p>
 
     <h3>Features</h3>
     <ul>
-      <li>Copy full path to any option in Settings dialogs (e.g., <code>Settings | Editor | Code Style | Java</code>)</li>
+      <li>Copy full path to any option in Settings dialogs (e.g., <code>Settings | Editor | Code Style | Java</code>)
+      </li>
       <li>Copy full path from main menu items (e.g., <code>File | Manage IDE Settings | Export Settings</code>)</li>
       <li>Works with Project Structure dialog in IntelliJ IDEA and EDU products</li>
       <li>Supports navigation via <b>Ctrl+Click</b> (Cmd+Click on macOS)</li>
@@ -20,15 +22,30 @@
     <h3>Usage</h3>
     <ul>
       <li><b>Settings/Dialogs:</b> Use <b>Ctrl+Click</b> (Cmd+Click on macOS) on any UI element</li>
-      <li><b>Main Menu:</b> Enable mouse interception in Advanced Settings, then <b>Ctrl+Click</b> on any menu item to copy its path (the menu action will not execute)</li>
+      <li><b>Main Menu:</b> Enable mouse interception in Advanced Settings, then <b>Ctrl+Click</b> on any menu item to
+        copy its path (the menu action will not execute)
+      </li>
       <li>The full path is copied to the clipboard</li>
     </ul>
 
     <h3>Configuration</h3>
     <p>Go to <b>Settings | Advanced Settings | Copy Setting Path</b> to configure:</p>
     <ul>
-      <li><b>Path separator style</b>: Choose between pipe (<code>|</code>), arrow (<code>→</code>) and other styles</li>
-      <li><b>Mouse click interception</b>: Enable to copy paths without activating UI components, and to enable main menu path copying</li>
+      <li><b>Path separator style</b>: Choose between pipe (<code>|</code>), arrow (<code>→</code>) and other styles
+      </li>
+      <li><b>Mouse click interception</b>: Enable to copy paths without activating UI components, and to enable main
+        menu path copying
+      </li>
+    </ul>
+
+    <h3>Shortcut Conflict</h3>
+    <p>The default <b>Ctrl+Click</b> (Cmd+Click on macOS) shortcut conflicts with <b>multiple selection</b> in lists and
+      trees.
+      When mouse interception is enabled, a warning notification will appear with a link to Keymap settings.</p>
+    <p><b>Recommendation:</b> Change the shortcut in <b>Settings | Keymap</b> to use:</p>
+    <ul>
+      <li><b>Right-click shortcuts</b> — e.g., <b>Ctrl+Right Click</b> or <b>Shift+Right Click</b></li>
+      <li><b>Additional modifiers</b> — e.g., <b>Ctrl+Shift+Click</b> or <b>Ctrl+Alt+Click</b></li>
     </ul>
 
     <h3>Platform Limitations</h3>
@@ -39,7 +56,9 @@
     </ul>
 
     <h3>Important Notice</h3>
-    <p>This plugin is <b>incompatible</b> with the legacy <b>Copy Option Path</b> plugin. If you have the old plugin installed, please <b>uninstall it</b> before using this plugin. The IDE will prevent both plugins from running simultaneously.</p>
+    <p>This plugin is <b>incompatible</b> with the legacy <b>Copy Option Path</b> plugin. If you have the old plugin
+      installed, please <b>uninstall it</b> before using this plugin. The IDE will prevent both plugins from running
+      simultaneously.</p>
     ]]></description>
 
   <idea-version since-build="251"/>
