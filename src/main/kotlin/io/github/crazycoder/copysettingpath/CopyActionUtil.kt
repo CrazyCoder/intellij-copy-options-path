@@ -105,6 +105,9 @@ object RegexPatterns {
 
     /** Pattern to detect default toString() object references (e.g., "ClassName@hexAddress"). */
     val OBJECT_REFERENCE: Regex = Regex(".*@[0-9a-fA-F]+$")
+
+    /** Pattern to match multiple whitespace characters (spaces, tabs, newlines) for collapsing. */
+    val MULTIPLE_WHITESPACE: Regex = Regex("\\s+")
 }
 
 // ============================================================================
@@ -112,14 +115,21 @@ object RegexPatterns {
 // ============================================================================
 
 /**
- * Removes all HTML tags from a string, first removing Advanced Settings ID suffixes
- * (shown after <br> in Advanced Settings labels) to prevent them from being
- * concatenated with label text.
+ * Removes all HTML tags from a string and collapses whitespace.
+ *
+ * This function:
+ * 1. Removes Advanced Settings ID suffixes (shown after <br> in Advanced Settings labels)
+ * 2. Removes all HTML tags
+ * 3. Collapses multiple whitespace characters (spaces, tabs, newlines) into a single space
+ * 4. Trims leading and trailing whitespace
+ *
  * Uses cached regex patterns for performance.
  */
 fun String.removeHtmlTags(): String = this
     .replace(RegexPatterns.HTML_SETTING_ID_SUFFIX, "")
     .replace(RegexPatterns.HTML_TAGS, "")
+    .replace(RegexPatterns.MULTIPLE_WHITESPACE, " ")
+    .trim()
 
 /**
  * Removes Advanced Settings IDs that may be appended to labels.
@@ -183,25 +193,25 @@ fun trimFinalResult(path: StringBuilder): String {
 }
 
 // ============================================================================
-// Toast Notification Functions
+// Balloon Notification Functions
 // ============================================================================
 
-/** Advanced setting ID for toast notification configuration. */
-private const val SHOW_TOAST_SETTING_ID = "copy.setting.path.show.toast"
+/** Advanced setting ID for balloon notification configuration. */
+private const val SHOW_BALLOON_SETTING_ID = "copy.setting.path.show.balloon"
 
-/** Duration in seconds before the toast auto-hides. */
-private const val TOAST_DISPLAY_DURATION_SECONDS = 2L
+/** Duration in seconds before the balloon auto-hides. */
+private const val BALLOON_DISPLAY_DURATION_SECONDS = 2L
 
 /**
- * Shows a brief toast notification near the mouse cursor
+ * Shows a brief balloon notification near the mouse cursor
  * displaying the path that was copied to clipboard.
  *
- * The toast is only shown if the "copy.setting.path.show.toast" advanced setting is enabled.
+ * The balloon is only shown if the "copy.setting.path.show.balloon" advanced setting is enabled.
  *
- * @param copiedPath The path that was copied to clipboard, to display in the toast.
+ * @param copiedPath The path that was copied to clipboard, to display in the balloon.
  */
-fun showCopiedToast(copiedPath: String) {
-    if (!AdvancedSettings.getBoolean(SHOW_TOAST_SETTING_ID)) return
+fun showCopiedBalloon(copiedPath: String) {
+    if (!AdvancedSettings.getBoolean(SHOW_BALLOON_SETTING_ID)) return
 
     val mouseLocation = MouseInfo.getPointerInfo()?.location ?: return
     val point = RelativePoint(Point(mouseLocation.x, mouseLocation.y))
@@ -217,7 +227,7 @@ fun showCopiedToast(copiedPath: String) {
     // Schedule auto-hide after delay on EDT
     AppExecutorUtil.getAppScheduledExecutorService().schedule(
         { ApplicationManager.getApplication().invokeLater { balloon.hide() } },
-        TOAST_DISPLAY_DURATION_SECONDS,
+        BALLOON_DISPLAY_DURATION_SECONDS,
         TimeUnit.SECONDS
     )
 }

@@ -98,16 +98,16 @@
                      groupKey="group.advanced.settings.copy.setting.path"
                      bundle="messages.CopySettingPathBundle"/>
 
+    <!-- Advanced setting to show balloon notification when path is copied -->
+    <advancedSetting id="copy.setting.path.show.balloon"
+                     default="true"
+                     groupKey="group.advanced.settings.copy.setting.path"
+                     bundle="messages.CopySettingPathBundle"/>
+
     <!-- Advanced setting for path separator style -->
     <advancedSetting id="copy.setting.path.separator"
                      default="PIPE"
                      enumClass="io.github.crazycoder.copysettingpath.PathSeparator"
-                     groupKey="group.advanced.settings.copy.setting.path"
-                     bundle="messages.CopySettingPathBundle"/>
-
-    <!-- Advanced setting to show toast notification when path is copied -->
-    <advancedSetting id="copy.setting.path.show.toast"
-                     default="true"
                      groupKey="group.advanced.settings.copy.setting.path"
                      bundle="messages.CopySettingPathBundle"/>
   </extensions>
