@@ -32,49 +32,44 @@ object TreeTablePathExtractor {
      * @param separator The separator to use.
      */
     fun appendPath(src: Component, e: AnActionEvent?, path: StringBuilder, separator: String) {
-        // First try direct match
-        when (src) {
-            is TreeTable -> {
-                appendTreeTablePath(src, e, path, separator)
-                return
-            }
-            is Tree -> {
-                appendTreeComponentPath(src, e, path, separator)
-                return
-            }
-            is JTable -> {
-                appendTablePath(src, e, path, separator)
-                return
-            }
-            is JList<*> -> {
-                appendListPath(src, e, path, separator)
-                return
-            }
-        }
-
-        // If src is not a tree/table/list directly, search parent hierarchy
+        // First try direct match, then search parent hierarchy
         // (handles cases where user clicks on a renderer component inside a tree)
-        var parent = src.parent
-        while (parent != null) {
-            when (parent) {
-                is TreeTable -> {
-                    appendTreeTablePath(parent, e, path, separator)
-                    return
-                }
-                is Tree -> {
-                    appendTreeComponentPath(parent, e, path, separator)
-                    return
-                }
-                is JTable -> {
-                    appendTablePath(parent, e, path, separator)
-                    return
-                }
-                is JList<*> -> {
-                    appendListPath(parent, e, path, separator)
-                    return
-                }
+        generateSequence(src) { it.parent }
+            .firstOrNull { tryAppendComponentPath(it, e, path, separator) }
+    }
+
+    /**
+     * Tries to append the path for a tree/table/list component.
+     * @return true if the component was handled, false otherwise.
+     */
+    private fun tryAppendComponentPath(
+        component: Component,
+        e: AnActionEvent?,
+        path: StringBuilder,
+        separator: String
+    ): Boolean {
+        return when (component) {
+            is TreeTable -> {
+                appendTreeTablePath(component, e, path, separator)
+                true
             }
-            parent = parent.parent
+
+            is Tree -> {
+                appendTreeComponentPath(component, e, path, separator)
+                true
+            }
+
+            is JTable -> {
+                appendTablePath(component, e, path, separator)
+                true
+            }
+
+            is JList<*> -> {
+                appendListPath(component, e, path, separator)
+                true
+            }
+
+            else -> false
         }
     }
 
