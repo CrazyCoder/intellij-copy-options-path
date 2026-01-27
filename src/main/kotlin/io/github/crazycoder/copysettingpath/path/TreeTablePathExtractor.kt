@@ -24,6 +24,7 @@ object TreeTablePathExtractor {
 
     /**
      * Appends tree/table/list path information if the source component is applicable.
+     * Also searches parent hierarchy for Tree/Table/List components.
      *
      * @param src The source component.
      * @param e The action event.
@@ -31,19 +32,61 @@ object TreeTablePathExtractor {
      * @param separator The separator to use.
      */
     fun appendPath(src: Component, e: AnActionEvent?, path: StringBuilder, separator: String) {
+        // First try direct match
         when (src) {
-            is TreeTable -> appendTreeTablePath(src, e, path, separator)
-            is Tree -> appendTreeComponentPath(src, e, path, separator)
-            is JTable -> appendTablePath(src, e, path, separator)
-            is JList<*> -> appendListPath(src, e, path, separator)
+            is TreeTable -> {
+                appendTreeTablePath(src, e, path, separator)
+                return
+            }
+            is Tree -> {
+                appendTreeComponentPath(src, e, path, separator)
+                return
+            }
+            is JTable -> {
+                appendTablePath(src, e, path, separator)
+                return
+            }
+            is JList<*> -> {
+                appendListPath(src, e, path, separator)
+                return
+            }
+        }
+
+        // If src is not a tree/table/list directly, search parent hierarchy
+        // (handles cases where user clicks on a renderer component inside a tree)
+        var parent = src.parent
+        while (parent != null) {
+            when (parent) {
+                is TreeTable -> {
+                    appendTreeTablePath(parent, e, path, separator)
+                    return
+                }
+                is Tree -> {
+                    appendTreeComponentPath(parent, e, path, separator)
+                    return
+                }
+                is JTable -> {
+                    appendTablePath(parent, e, path, separator)
+                    return
+                }
+                is JList<*> -> {
+                    appendListPath(parent, e, path, separator)
+                    return
+                }
+            }
+            parent = parent.parent
         }
     }
 
     /**
      * Appends path from a TreeTable component.
+     * Tries mouse location first, falls back to selection.
      */
     private fun appendTreeTablePath(treeTable: TreeTable, e: AnActionEvent?, path: StringBuilder, separator: String) {
-        val selectedRow = treeTable.selectedRow.takeIf { it != -1 } ?: detectRowFromMousePoint(treeTable, e)
+        // Try mouse location first, then fall back to selection
+        val rowFromMouse = detectRowFromMousePoint(treeTable, e)
+        val selectedRow = if (rowFromMouse != -1) rowFromMouse else treeTable.selectedRow
+
         if (selectedRow != -1) {
             treeTable.tree.getPathForRow(selectedRow)?.path?.let { rowPath ->
                 val filteredPath = filterInvisibleRoot(rowPath, treeTable.tree)
@@ -54,15 +97,23 @@ object TreeTablePathExtractor {
 
     /**
      * Appends path from a Tree component.
+     * Tries mouse location first, falls back to tree's selection path.
      */
     private fun appendTreeComponentPath(tree: Tree, e: AnActionEvent?, path: StringBuilder, separator: String) {
-        val point = getConvertedMousePoint(e, tree) ?: return
-        val rowForLocation = tree.getRowForLocation(point.x, point.y)
-        if (rowForLocation > 0) {
-            tree.getPathForRow(rowForLocation)?.let { treePath ->
-                val filteredPath = filterInvisibleRoot(treePath.path, tree)
-                appendTreePath(filteredPath, path, separator)
-            }
+        // Try to get row from mouse location
+        val point = getConvertedMousePoint(e, tree)
+        val rowForLocation = if (point != null) tree.getRowForLocation(point.x, point.y) else -1
+
+        val treePath = if (rowForLocation >= 0) {
+            tree.getPathForRow(rowForLocation)
+        } else {
+            // Fall back to tree's selection path
+            tree.selectionPath
+        }
+
+        treePath?.let {
+            val filteredPath = filterInvisibleRoot(it.path, tree)
+            appendTreePath(filteredPath, path, separator)
         }
     }
 
@@ -111,12 +162,14 @@ object TreeTablePathExtractor {
 
     /**
      * Appends tree node path segments to the path builder.
+     * Uses allowDuplicate=true because tree nodes can have the same name
+     * at different levels (e.g., group "Copy Setting Path" containing action "Copy Setting Path").
      */
     private fun appendTreePath(treePath: Array<out Any>, path: StringBuilder, separator: String) {
         treePath.forEach { node ->
             val displayText = extractTreeNodeDisplayText(node)
             if (!displayText.isNullOrEmpty()) {
-                appendItem(path, displayText, separator)
+                appendItem(path, displayText, separator, allowDuplicate = true)
             }
         }
     }

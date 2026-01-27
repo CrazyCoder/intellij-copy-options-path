@@ -61,6 +61,12 @@
   </applicationListeners>
 
   <extensions defaultExtensionNs="com.intellij">
+    <!-- Notification group for plugin warnings -->
+    <notificationGroup id="Copy Setting Path"
+                       displayType="BALLOON"
+                       bundle="messages.CopySettingPathBundle"
+                       key="notification.group.copy.setting.path"/>
+
     <!-- Advanced setting to control mouse click interception -->
     <advancedSetting id="copy.setting.path.mouse.intercept"
                      default="false"

@@ -131,24 +131,29 @@ private fun String.removeAdvancedSettingIds(): String =
  * @param path StringBuilder to append to.
  * @param item The item to append.
  * @param separator The separator to use between path components.
+ * @param allowDuplicate If true, allows appending even if it matches the last segment.
+ *                       Useful for tree paths where parent and child can have the same name.
  */
 fun appendItem(
     path: StringBuilder,
     item: String?,
-    separator: String = PathConstants.SEPARATOR
+    separator: String = PathConstants.SEPARATOR,
+    allowDuplicate: Boolean = false
 ) {
     if (item.isNullOrEmpty()) return
     val cleanItem = item.removeHtmlTags()
     if (cleanItem.isEmpty()) return
 
-    // Check for exact segment match (not just suffix match)
-    val trimmedPath =
-        path.trimEnd { it in PathSeparator.allSeparatorChars }
-            .toString()
-    val lastSegment =
-        trimmedPath.substringAfterLast(PathConstants.SEPARATOR.trim())
-            .trim()
-    if (lastSegment == cleanItem) return
+    if (!allowDuplicate) {
+        // Check for exact segment match (not just suffix match)
+        val trimmedPath =
+            path.trimEnd { it in PathSeparator.allSeparatorChars }
+                .toString()
+        val lastSegment =
+            trimmedPath.substringAfterLast(PathConstants.SEPARATOR.trim())
+                .trim()
+        if (lastSegment == cleanItem) return
+    }
 
     path.append(cleanItem)
     // If the item ends with ":", it acts as a natural grouping label.

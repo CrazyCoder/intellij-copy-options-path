@@ -1,14 +1,22 @@
 package io.github.crazycoder.copysettingpath
 
 import com.intellij.ide.IdeEventQueue
+import com.intellij.notification.NotificationGroupManager
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.MouseShortcut
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.ide.CopyPasteManager
-import com.intellij.openapi.keymap.KeymapManager
+import com.intellij.openapi.keymap.Keymap
+import com.intellij.openapi.keymap.KeymapManagerListener
+import com.intellij.openapi.keymap.KeymapUtil
+import com.intellij.openapi.keymap.ex.KeymapManagerEx
+import com.intellij.openapi.keymap.impl.ui.EditKeymapsDialog
 import com.intellij.openapi.options.advanced.AdvancedSettings
+import com.intellij.openapi.options.advanced.AdvancedSettingsChangeListener
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.ui.TextTransferable
 import io.github.crazycoder.copysettingpath.actions.CopySettingPath
@@ -21,7 +29,7 @@ import javax.swing.SwingUtilities
 
 /**
  * Intercepts mouse events to prevent component activation (checkbox toggle, button press, etc.)
- * when the user performs Ctrl+Click (or Cmd+Click on macOS) to copy the setting path.
+ * when the user performs the configured mouse shortcut to copy the setting path.
  *
  * The IntelliJ Platform processes mouse shortcuts on MOUSE_RELEASED, but by that time
  * the MOUSE_PRESSED event has already been dispatched to the component. This interceptor
@@ -30,6 +38,10 @@ import javax.swing.SwingUtilities
  *
  * For menu items, the interceptor also handles MOUSE_RELEASED to copy the menu path
  * before the menu action is performed and the menu closes.
+ *
+ * The interceptor dynamically detects the user's configured shortcut from the keymap and
+ * automatically updates when the shortcut is changed. It supports custom shortcuts with
+ * different or additional modifiers (e.g., Ctrl+Shift+Click, Ctrl+Alt+Shift+Click).
  *
  * Registered via [CopySettingPathAppLifecycleListener] when the application frame is created,
  * ensuring it's initialized early before any dialogs can be opened.
@@ -40,6 +52,7 @@ class MouseEventInterceptor : Disposable {
     companion object {
         private const val COPY_OPTIONS_PATH_ACTION_ID = "CopySettingPath"
         private const val MOUSE_INTERCEPT_SETTING_ID = "copy.setting.path.mouse.intercept"
+        private const val NOTIFICATION_GROUP_ID = "Copy Setting Path"
 
         @JvmStatic
         fun getInstance(): MouseEventInterceptor = service()
@@ -49,6 +62,14 @@ class MouseEventInterceptor : Disposable {
     private var isRegistered = false
 
     /**
+     * Cached mouse shortcut for the CopySettingPath action.
+     * Updated when the keymap changes or when the action's shortcuts are modified.
+     * Only the first mouse shortcut is cached; additional mouse shortcuts are ignored.
+     */
+    @Volatile
+    private var cachedMouseShortcut: MouseShortcut? = null
+
+    /**
      * Tracks whether we blocked a MOUSE_PRESSED event on a menu component.
      * If true, we should handle the subsequent MOUSE_RELEASED to copy the path.
      */
@@ -56,7 +77,14 @@ class MouseEventInterceptor : Disposable {
     private var pendingMenuCopy: Component? = null
 
     /**
-     * Registers the event interceptor with the IDE event queue.
+     * Strong reference to the keymap listener to prevent garbage collection.
+     * The listener is registered with addWeakListener, so we need to keep this reference.
+     */
+    private var keymapListener: KeymapManagerListener? = null
+
+    /**
+     * Registers the event interceptor with the IDE event queue and sets up listeners
+     * for keymap and advanced settings changes.
      * Called from [CopySettingPathAppLifecycleListener.appFrameCreated].
      */
     fun register() {
@@ -65,12 +93,141 @@ class MouseEventInterceptor : Disposable {
             if (isRegistered) return
             isRegistered = true
 
+            // Initialize the cached shortcut
+            updateMouseShortcut()
+
+            // Register event dispatcher
             IdeEventQueue.getInstance().addDispatcher(
                 { event -> interceptMouseEvent(event) },
                 this
             )
+
+            // Listen for keymap changes - keep strong reference to prevent GC
+            keymapListener = object : KeymapManagerListener {
+                override fun activeKeymapChanged(keymap: Keymap?) {
+                    LOG.debug { "Active keymap changed, updating mouse shortcut" }
+                    updateMouseShortcut()
+                }
+
+                override fun shortcutsChanged(keymap: Keymap, actionIds: Collection<String>, fromSettings: Boolean) {
+                    LOG.debug { "Shortcuts changed for actions: $actionIds" }
+                    if (COPY_OPTIONS_PATH_ACTION_ID in actionIds) {
+                        LOG.debug { "CopySettingPath shortcut changed, updating cached shortcut" }
+                        updateMouseShortcut()
+                        // Warn if shortcut was changed to default while intercept is enabled
+                        if (AdvancedSettings.getBoolean(MOUSE_INTERCEPT_SETTING_ID)) {
+                            checkAndWarnDefaultShortcut()
+                        }
+                    }
+                }
+            }
+            KeymapManagerEx.getInstanceEx().addWeakListener(keymapListener!!)
+
+            // Listen for advanced settings changes to show warning when mouse intercept is enabled
+            ApplicationManager.getApplication().messageBus.connect(this)
+                .subscribe(AdvancedSettingsChangeListener.TOPIC, object : AdvancedSettingsChangeListener {
+                    override fun advancedSettingChanged(id: String, oldValue: Any, newValue: Any) {
+                        if (id == MOUSE_INTERCEPT_SETTING_ID && newValue == true) {
+                            checkAndWarnDefaultShortcut()
+                        }
+                    }
+                })
+
             LOG.debug { "MouseEventInterceptor registered for CopySettingPath" }
         }
+    }
+
+    /**
+     * Updates the cached mouse shortcut from the active keymap.
+     * Only the first mouse shortcut for the action is cached.
+     */
+    private fun updateMouseShortcut() {
+        val keymap = KeymapManagerEx.getInstanceEx().activeKeymap
+        cachedMouseShortcut = keymap.getShortcuts(COPY_OPTIONS_PATH_ACTION_ID)
+            .filterIsInstance<MouseShortcut>()
+            .firstOrNull()
+
+        LOG.debug { "Updated mouse shortcut for CopySettingPath: ${cachedMouseShortcut?.let { formatShortcut(it) } ?: "none"}" }
+    }
+
+    /**
+     * Formats a mouse shortcut for display in log messages.
+     */
+    private fun formatShortcut(shortcut: MouseShortcut): String {
+        return KeymapUtil.getMouseShortcutText(shortcut)
+    }
+
+    /**
+     * Checks if the current shortcut is the default (Ctrl+Click or Cmd+Click) and shows
+     * a warning notification if so, because the default shortcut conflicts with multiple selection.
+     */
+    private fun checkAndWarnDefaultShortcut() {
+        val shortcut = cachedMouseShortcut ?: return
+
+        if (isDefaultShortcut(shortcut)) {
+            showDefaultShortcutWarning(shortcut)
+        }
+    }
+
+    /**
+     * Checks if the given shortcut is the default Ctrl+Click (Windows/Linux) or Cmd+Click (macOS).
+     * The default shortcut only has the primary modifier without additional modifiers like Shift or Alt.
+     */
+    private fun isDefaultShortcut(shortcut: MouseShortcut): Boolean {
+        if (shortcut.button != MouseEvent.BUTTON1 || shortcut.clickCount != 1) {
+            return false
+        }
+
+        val modifiers = shortcut.modifiers
+        val expectedDefaultModifier = if (SystemInfo.isMac) {
+            InputEvent.META_DOWN_MASK
+        } else {
+            InputEvent.CTRL_DOWN_MASK
+        }
+
+        // Check if only the primary modifier is set (no Shift, Alt, etc.)
+        return modifiers == expectedDefaultModifier
+    }
+
+    /**
+     * Shows a warning notification that the default shortcut conflicts with multiple selection.
+     */
+    private fun showDefaultShortcutWarning(shortcut: MouseShortcut) {
+        val currentShortcutText = formatShortcut(shortcut)
+
+        // Suggest an alternative shortcut with an additional modifier
+        val suggestedModifier = if (SystemInfo.isMac) {
+            InputEvent.META_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK
+        } else {
+            InputEvent.CTRL_DOWN_MASK or InputEvent.SHIFT_DOWN_MASK
+        }
+        val suggestedShortcut = MouseShortcut(MouseEvent.BUTTON1, suggestedModifier, 1)
+        val suggestedShortcutText = formatShortcut(suggestedShortcut)
+
+        val notification = NotificationGroupManager.getInstance()
+            .getNotificationGroup(NOTIFICATION_GROUP_ID)
+            .createNotification(
+                CopySettingPathBundle.message("notification.default.shortcut.warning.title"),
+                CopySettingPathBundle.message(
+                    "notification.default.shortcut.warning.content",
+                    currentShortcutText,
+                    suggestedShortcutText
+                ),
+                NotificationType.WARNING
+            )
+            .addAction(object : com.intellij.notification.NotificationAction(
+                CopySettingPathBundle.message("notification.default.shortcut.warning.action")
+            ) {
+                override fun actionPerformed(
+                    e: com.intellij.openapi.actionSystem.AnActionEvent,
+                    notification: com.intellij.notification.Notification
+                ) {
+                    notification.expire()
+                    EditKeymapsDialog(e.project, COPY_OPTIONS_PATH_ACTION_ID).show()
+                }
+            })
+
+        notification.notify(null)
     }
 
     /**
@@ -118,14 +275,14 @@ class MouseEventInterceptor : Disposable {
         if (MenuPathExtractor.isMenuComponent(component)) {
             // Record the menu component for path extraction on MOUSE_RELEASED
             pendingMenuCopy = component
-            LOG.debug { "Blocking MOUSE_PRESSED on menu component for CopySettingPath" }
+            LOG.debug { "Blocking MOUSE_PRESSED on menu component for CopySettingPath (shortcut: ${cachedMouseShortcut?.let { formatShortcut(it) }})" }
             return true
         }
 
         // For non-menu components, just block MOUSE_PRESSED as before
         // The MOUSE_RELEASED will still trigger our action via the normal shortcut mechanism
         pendingMenuCopy = null
-        LOG.debug { "Blocking MOUSE_PRESSED to prevent component activation for CopySettingPath" }
+        LOG.debug { "Blocking MOUSE_PRESSED to prevent component activation for CopySettingPath (shortcut: ${cachedMouseShortcut?.let { formatShortcut(it) }})" }
         return true
     }
 
@@ -151,7 +308,7 @@ class MouseEventInterceptor : Disposable {
         copyMenuPath(menuComponent)
 
         // Consume the event to prevent the menu action from executing
-        LOG.debug { "Blocking MOUSE_RELEASED on menu component - path copied" }
+        LOG.debug { "Blocking MOUSE_RELEASED on menu component - path copied (shortcut: ${cachedMouseShortcut?.let { formatShortcut(it) }})" }
         return true
     }
 
@@ -181,46 +338,22 @@ class MouseEventInterceptor : Disposable {
 
     /**
      * Checks if the mouse event matches the CopySettingPath action shortcut.
+     * Compares the event against the cached mouse shortcut from the keymap.
      */
     private fun isCopySettingPathShortcut(event: MouseEvent): Boolean {
-        // Only handle left mouse button
-        if (event.button != MouseEvent.BUTTON1) return false
+        val shortcut = cachedMouseShortcut ?: return false
 
-        val modifiersEx = event.modifiersEx
+        // Check button
+        if (event.button != shortcut.button) return false
 
-        // Check for Ctrl (Windows/Linux) or Cmd (macOS) modifier
-        val expectedModifier = if (SystemInfo.isMac) {
-            InputEvent.META_DOWN_MASK
-        } else {
-            InputEvent.CTRL_DOWN_MASK
-        }
+        // Check click count (we intercept single clicks)
+        if (shortcut.clickCount != 1) return false
 
-        // The modifiersEx includes BUTTON1_DOWN_MASK during press, so we need to mask it out
-        val relevantModifiers = modifiersEx and (
-                InputEvent.CTRL_DOWN_MASK or
-                        InputEvent.META_DOWN_MASK or
-                        InputEvent.SHIFT_DOWN_MASK or
-                        InputEvent.ALT_DOWN_MASK
-                )
+        // Extract relevant modifiers from the event (excluding button down masks)
+        val eventModifiers = event.modifiersEx and MODIFIER_MASK
 
-        if (relevantModifiers != expectedModifier) return false
-
-        // Verify that the shortcut is actually registered for CopySettingPath action
-        return isShortcutRegisteredForAction(event)
-    }
-
-    /**
-     * Verifies that the current mouse shortcut is registered for the CopySettingPath action.
-     */
-    private fun isShortcutRegisteredForAction(event: MouseEvent): Boolean {
-        val keymapManager = KeymapManager.getInstance() ?: return false
-        val keymap = keymapManager.activeKeymap
-
-        // Create a shortcut matching the event (single click, with modifiers)
-        val shortcut = MouseShortcut(event.button, event.modifiersEx and MODIFIER_MASK, 1)
-
-        val actionIds = keymap.getActionIds(shortcut)
-        return COPY_OPTIONS_PATH_ACTION_ID in actionIds
+        // Compare with the shortcut's modifiers
+        return eventModifiers == shortcut.modifiers
     }
 
     override fun dispose() {
