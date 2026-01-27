@@ -106,18 +106,14 @@ class MouseEventInterceptor : Disposable {
             keymapListener = object : KeymapManagerListener {
                 override fun activeKeymapChanged(keymap: Keymap?) {
                     LOG.debug { "Active keymap changed, updating mouse shortcut" }
-                    updateMouseShortcut()
+                    updateMouseShortcutAndWarn()
                 }
 
                 override fun shortcutsChanged(keymap: Keymap, actionIds: Collection<String>, fromSettings: Boolean) {
-                    LOG.debug { "Shortcuts changed for actions: $actionIds" }
+                    LOG.debug { "Shortcuts changed for actions: $actionIds, fromSettings: $fromSettings" }
                     if (COPY_OPTIONS_PATH_ACTION_ID in actionIds) {
                         LOG.debug { "CopySettingPath shortcut changed, updating cached shortcut" }
-                        updateMouseShortcut()
-                        // Warn if shortcut was changed to default while intercept is enabled
-                        if (AdvancedSettings.getBoolean(MOUSE_INTERCEPT_SETTING_ID)) {
-                            checkAndWarnDefaultShortcut()
-                        }
+                        updateMouseShortcutAndWarn()
                     }
                 }
             }
@@ -148,6 +144,17 @@ class MouseEventInterceptor : Disposable {
             .firstOrNull()
 
         LOG.debug { "Updated mouse shortcut for CopySettingPath: ${cachedMouseShortcut?.let { formatShortcut(it) } ?: "none"}" }
+    }
+
+    /**
+     * Updates the cached mouse shortcut and shows a warning if it's the default shortcut
+     * and mouse interception is enabled.
+     */
+    private fun updateMouseShortcutAndWarn() {
+        updateMouseShortcut()
+        if (AdvancedSettings.getBoolean(MOUSE_INTERCEPT_SETTING_ID)) {
+            checkAndWarnDefaultShortcut()
+        }
     }
 
     /**
