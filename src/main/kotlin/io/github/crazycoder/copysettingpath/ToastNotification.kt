@@ -257,11 +257,6 @@ private class ToastWindow(text: String, private val separator: String) : javax.s
 
         override fun paintComponent(g: java.awt.Graphics) {
             val g2 = g.create() as java.awt.Graphics2D
-            g2.setRenderingHint(
-                java.awt.RenderingHints.KEY_ANTIALIASING,
-                java.awt.RenderingHints.VALUE_ANTIALIAS_ON
-            )
-
             // First fill with normal background to clear any previous content
             g2.color = normalBackground
             g2.fillRoundRect(0, 0, width, height, SEGMENT_CORNER_RADIUS, SEGMENT_CORNER_RADIUS)
