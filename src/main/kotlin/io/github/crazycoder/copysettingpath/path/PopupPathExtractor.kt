@@ -2,9 +2,8 @@ package io.github.crazycoder.copysettingpath.path
 
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.ui.popup.JBPopup
+import com.intellij.openapi.ui.popup.ListPopup
 import com.intellij.openapi.ui.popup.util.PopupUtil
-import com.intellij.ui.SimpleColoredComponent
-import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.TitlePanel
 import io.github.crazycoder.copysettingpath.*
 import java.awt.Component
@@ -77,8 +76,11 @@ object PopupPathExtractor {
         }
 
         // Generic popup handling
+        // Only add popup title if we found a meaningful one (don't use generic "Popup")
         val popupTitle = extractPopupTitle(popup, src)
-        appendItem(path, popupTitle ?: "Popup", separator)
+        if (!popupTitle.isNullOrBlank()) {
+            appendItem(path, popupTitle, separator)
+        }
 
         // Add middle path segments (tabs, titled borders)
         SettingsPathExtractor.appendMiddlePath(src, null, path, separator)
@@ -213,11 +215,18 @@ object PopupPathExtractor {
      * Extracts the popup title from various sources.
      *
      * This is a universal approach that works for all JBPopup-based popups:
-     * 1. Call getTitle() on AbstractPopup to get CaptionPanel (standard popups)
-     * 2. Search for title-like components in popup content (custom header panels)
-     * 3. Fall back to accessible name or window title
+     * 1. For ListPopup, try getListStep().getTitle() (works for intention actions, etc.)
+     * 2. Call getTitle() on AbstractPopup to get CaptionPanel (standard popups)
+     * 3. Search for title-like components in popup content (custom header panels)
+     * 4. Fall back to accessible name or window title
      */
     private fun extractPopupTitle(popup: JBPopup, src: Component): String? {
+        // Try to get title from ListPopup's step (works for intention actions, quick fixes, etc.)
+        val stepTitle = extractTitleFromListPopupStep(popup)
+        if (!stepTitle.isNullOrBlank()) {
+            return stepTitle
+        }
+
         // Try to get title from popup's getTitle() method (AbstractPopup.getTitle() returns CaptionPanel)
         val captionTitle = extractTitleFromCaptionPanel(popup)
         if (!captionTitle.isNullOrBlank()) {
@@ -239,6 +248,21 @@ object PopupPathExtractor {
 
         // Try window title
         return extractTitleFromWindow(src)
+    }
+
+    /**
+     * Extracts title from ListPopup's step.
+     *
+     * ListPopup (used for intention actions, quick fixes, etc.) has a ListPopupStep
+     * that provides the title via getTitle().
+     */
+    private fun extractTitleFromListPopupStep(popup: JBPopup): String? {
+        if (popup !is ListPopup) return null
+
+        return runCatching {
+            val step = popup.listStep
+            step?.title?.takeIf { it.isNotBlank() }
+        }.getOrNull()
     }
 
     /**
@@ -309,130 +333,24 @@ object PopupPathExtractor {
      */
     private fun extractTitleFromPopupContent(content: Container): String? {
         // First, try to find SimpleColoredComponent with bold text (common for custom headers)
-        val boldTitle = findBoldSimpleColoredComponentText(content, maxDepth = 6)
+        val boldTitle = TitleSearchUtils.findBoldSimpleColoredText(content, maxDepth = 6)
         if (!boldTitle.isNullOrBlank()) {
             return boldTitle
         }
 
         // Try to find bold JLabel
-        val boldLabelTitle = findBoldLabelText(content, maxDepth = 6)
+        val boldLabelTitle = TitleSearchUtils.findBoldLabelText(content, maxDepth = 6)
         if (!boldLabelTitle.isNullOrBlank()) {
             return boldLabelTitle
         }
 
         // Fall back to first title-like JLabel
-        val labelTitle = findTitleLikeLabelText(content, maxDepth = 6)
+        val labelTitle = TitleSearchUtils.findTitleLikeLabel(content, maxDepth = 6)
         if (!labelTitle.isNullOrBlank()) {
             return labelTitle
         }
 
         return null
-    }
-
-    /**
-     * Searches for a JLabel with bold font.
-     */
-    private fun findBoldLabelText(container: Container, maxDepth: Int): String? {
-        if (maxDepth <= 0) return null
-
-        for (component in container.components) {
-            if (component is JLabel) {
-                val font = component.font
-                if (font != null && font.isBold) {
-                    val text = component.text?.removeHtmlTags()?.trim()
-                    if (!text.isNullOrBlank()) {
-                        return text
-                    }
-                }
-            }
-            if (component is Container) {
-                val found = findBoldLabelText(component, maxDepth - 1)
-                if (found != null) {
-                    return found
-                }
-            }
-        }
-        return null
-    }
-
-    /**
-     * Searches for a JLabel that looks like a title (short, doesn't end with ":").
-     */
-    private fun findTitleLikeLabelText(container: Container, maxDepth: Int): String? {
-        if (maxDepth <= 0) return null
-
-        for (component in container.components) {
-            if (component is JLabel) {
-                val text = component.text?.removeHtmlTags()?.trim()
-                if (!text.isNullOrBlank() &&
-                    !text.endsWith(":") &&
-                    text.length in 3..50 &&
-                    !text.contains("Ctrl+") &&
-                    !text.contains("Cmd+") &&
-                    !text.contains("Alt+")
-                ) {
-                    return text
-                }
-            }
-            if (component is Container) {
-                val found = findTitleLikeLabelText(component, maxDepth - 1)
-                if (found != null) {
-                    return found
-                }
-            }
-        }
-        return null
-    }
-
-    /**
-     * Searches for a SimpleColoredComponent with BOLD text attributes.
-     * This is common for popup titles in custom header panels.
-     *
-     * @param maxDepth Maximum depth to search (to avoid going too deep into content)
-     */
-    private fun findBoldSimpleColoredComponentText(container: Container, maxDepth: Int): String? {
-        if (maxDepth <= 0) return null
-
-        for (component in container.components) {
-            if (component is SimpleColoredComponent) {
-                val boldText = extractBoldTextFromSimpleColoredComponent(component)
-                if (!boldText.isNullOrBlank()) {
-                    return boldText
-                }
-            }
-            if (component is Container) {
-                val found = findBoldSimpleColoredComponentText(component, maxDepth - 1)
-                if (found != null) {
-                    return found
-                }
-            }
-        }
-        return null
-    }
-
-    /**
-     * Extracts bold text from a SimpleColoredComponent.
-     * Returns the concatenated text of all BOLD fragments.
-     */
-    private fun extractBoldTextFromSimpleColoredComponent(component: SimpleColoredComponent): String? {
-        return runCatching {
-            val iterator = component.iterator()
-            val boldParts = mutableListOf<String>()
-
-            while (iterator.hasNext()) {
-                val fragment = iterator.next()
-                val text = fragment?.removeHtmlTags()?.trim()
-                if (!text.isNullOrBlank()) {
-                    // Check if this fragment has BOLD style
-                    val style = iterator.textAttributes.style
-                    if ((style and SimpleTextAttributes.STYLE_BOLD) != 0) {
-                        boldParts.add(text)
-                    }
-                }
-            }
-
-            boldParts.joinToString(" ").takeIf { it.isNotBlank() }
-        }.getOrNull()
     }
 
     /**

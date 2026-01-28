@@ -5,8 +5,6 @@ import com.intellij.openapi.options.ex.SingleConfigurableEditor
 import com.intellij.openapi.options.newEditor.SettingsDialog
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.ComponentUtil
-import com.intellij.ui.SimpleColoredComponent
-import com.intellij.ui.SimpleTextAttributes
 import io.github.crazycoder.copysettingpath.appendItem
 import io.github.crazycoder.copysettingpath.removeHtmlTags
 import java.awt.Component
@@ -167,19 +165,19 @@ object PathBuilder {
         }
 
         // Then try to find bold labels
-        val boldLabelTitle = findBoldLabelText(container, maxDepth = 10)
+        val boldLabelTitle = TitleSearchUtils.findBoldLabelText(container, maxDepth = 10)
         if (!boldLabelTitle.isNullOrBlank()) {
             return boldLabelTitle
         }
 
         // Then try SimpleColoredComponent with bold text
-        val boldColoredTitle = findBoldSimpleColoredText(container, maxDepth = 10)
+        val boldColoredTitle = TitleSearchUtils.findBoldSimpleColoredText(container, maxDepth = 10)
         if (!boldColoredTitle.isNullOrBlank()) {
             return boldColoredTitle
         }
 
         // Fallback: find first title-like label (short, doesn't end with ":")
-        val titleLikeLabel = findTitleLikeLabel(container, maxDepth = 10)
+        val titleLikeLabel = TitleSearchUtils.findTitleLikeLabel(container, maxDepth = 10)
         if (!titleLikeLabel.isNullOrBlank()) {
             return titleLikeLabel
         }
@@ -233,109 +231,6 @@ object PathBuilder {
             }
         }
         return null
-    }
-
-    /**
-     * Finds a label that looks like a title (short text, doesn't end with ":").
-     * This is a fallback when bold detection doesn't work.
-     */
-    private fun findTitleLikeLabel(container: Container, maxDepth: Int): String? {
-        if (maxDepth <= 0) return null
-
-        for (component in container.components) {
-            if (component is JLabel) {
-                val text = component.text?.removeHtmlTags()?.trim()
-                // Title-like: not empty, doesn't end with ":", reasonably short, not a shortcut hint
-                if (!text.isNullOrBlank() &&
-                    !text.endsWith(":") &&
-                    text.length in 3..50 &&
-                    !text.contains("Ctrl+") &&
-                    !text.contains("Cmd+") &&
-                    !text.contains("Alt+")
-                ) {
-                    return text
-                }
-            }
-            if (component is Container) {
-                val found = findTitleLikeLabel(component, maxDepth - 1)
-                if (found != null) {
-                    return found
-                }
-            }
-        }
-        return null
-    }
-
-    /**
-     * Searches for a JLabel with bold font (typical for dialog headers).
-     */
-    private fun findBoldLabelText(container: Container, maxDepth: Int): String? {
-        if (maxDepth <= 0) return null
-
-        for (component in container.components) {
-            if (component is JLabel) {
-                val font = component.font
-                if (font != null && font.isBold) {
-                    val text = component.text?.removeHtmlTags()?.trim()
-                    if (!text.isNullOrBlank()) {
-                        return text
-                    }
-                }
-            }
-            if (component is Container) {
-                val found = findBoldLabelText(component, maxDepth - 1)
-                if (found != null) {
-                    return found
-                }
-            }
-        }
-        return null
-    }
-
-    /**
-     * Searches for a SimpleColoredComponent with BOLD text.
-     */
-    private fun findBoldSimpleColoredText(container: Container, maxDepth: Int): String? {
-        if (maxDepth <= 0) return null
-
-        for (component in container.components) {
-            if (component is SimpleColoredComponent) {
-                val boldText = extractBoldText(component)
-                if (!boldText.isNullOrBlank()) {
-                    return boldText
-                }
-            }
-            if (component is Container) {
-                val found = findBoldSimpleColoredText(component, maxDepth - 1)
-                if (found != null) {
-                    return found
-                }
-            }
-        }
-        return null
-    }
-
-    /**
-     * Extracts bold text from a SimpleColoredComponent.
-     */
-    private fun extractBoldText(component: SimpleColoredComponent): String? {
-        return runCatching {
-            val iterator = component.iterator()
-            val boldParts = mutableListOf<String>()
-
-            while (iterator.hasNext()) {
-                val fragment = iterator.next()
-                val text = fragment?.removeHtmlTags()?.trim()
-                if (!text.isNullOrBlank()) {
-                    val style = iterator.textAttributes.style
-                    if ((style and SimpleTextAttributes.STYLE_BOLD) != 0) {
-                        boldParts.add(text)
-                    }
-                }
-            }
-
-            boldParts.joinToString(" ").takeIf { it.isNotBlank() }
-        }.getOrNull()
     }
 
     /**

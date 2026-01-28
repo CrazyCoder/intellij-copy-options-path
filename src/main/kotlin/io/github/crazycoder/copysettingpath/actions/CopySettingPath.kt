@@ -53,7 +53,7 @@ class CopySettingPath : DumbAwareAction() {
         LOG.debug("Selected path: $result")
         e.inputEvent?.consume()
         CopyPasteManager.getInstance().setContents(TextTransferable(result, result))
-        showCopiedBalloon(result)
+        showCopiedBalloon(result, src)
     }
 
     @Suppress("CompanionObjectInExtension")

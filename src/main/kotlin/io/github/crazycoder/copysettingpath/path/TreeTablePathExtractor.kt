@@ -296,27 +296,60 @@ object TreeTablePathExtractor {
 
     /**
      * Extracts text from a rendered component.
+     *
+     * Collects all text segments and returns the most meaningful one.
+     * This handles cases like Switcher where mnemonic numbers (1-9, 0) are
+     * rendered as separate labels before the actual item name.
      */
     private fun extractTextFromRenderedComponent(component: Component): String? {
-        return when (component) {
-            is JLabel -> component.text?.removeHtmlTags()?.takeIf { it.isNotBlank() }
-            is AbstractButton -> component.text?.removeHtmlTags()?.takeIf { it.isNotBlank() }
+        val texts = mutableListOf<String>()
+        collectTextFromComponent(component, texts)
+
+        if (texts.isEmpty()) return null
+
+        // Return the most meaningful text (longest non-mnemonic string)
+        // Mnemonics are typically single digits or short strings like "0", "1", etc.
+        return texts
+            .filter { !isMnemonicText(it) }
+            .maxByOrNull { it.length }
+            ?: texts.firstOrNull()
+    }
+
+    /**
+     * Recursively collects all text segments from a component hierarchy.
+     */
+    private fun collectTextFromComponent(component: Component, texts: MutableList<String>) {
+        when (component) {
+            is JLabel -> {
+                component.text?.removeHtmlTags()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+            }
+
+            is AbstractButton -> {
+                component.text?.removeHtmlTags()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
+            }
+
             is SimpleColoredComponent -> {
                 runCatching {
                     component.getCharSequence(false).toString().takeIf { it.isNotBlank() }
-                }.getOrNull()
+                }.getOrNull()?.let { texts.add(it) }
             }
 
             is Container -> {
                 for (child in component.components) {
-                    val text = extractTextFromRenderedComponent(child)
-                    if (!text.isNullOrBlank()) return text
+                    collectTextFromComponent(child, texts)
                 }
-                null
             }
-
-            else -> null
         }
+    }
+
+    /**
+     * Checks if a text string looks like a mnemonic/hotkey indicator.
+     * Mnemonics are typically single digits (0-9) used for keyboard navigation.
+     */
+    private fun isMnemonicText(text: String): Boolean {
+        val trimmed = text.trim()
+        // Single digit or single digit with punctuation (like "1." or "(1)")
+        return trimmed.length <= 3 && trimmed.any { it.isDigit() } && trimmed.count { it.isLetter() } == 0
     }
 
     /**

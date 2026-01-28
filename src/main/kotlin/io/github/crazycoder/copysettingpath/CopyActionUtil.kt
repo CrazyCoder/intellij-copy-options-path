@@ -3,16 +3,13 @@ package io.github.crazycoder.copysettingpath
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.options.advanced.AdvancedSettings
-import com.intellij.openapi.ui.popup.Balloon
-import com.intellij.openapi.ui.popup.JBPopupFactory
-import com.intellij.ui.awt.RelativePoint
+import com.intellij.ui.JBColor
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.awt.Component
 import java.awt.Container
 import java.awt.MouseInfo
 import java.awt.Point
 import java.util.concurrent.TimeUnit
-import javax.swing.MenuSelectionManager
 
 /**
  * Core utilities and constants for the Copy Setting Path plugin.
@@ -215,31 +212,146 @@ private const val BALLOON_DISPLAY_DURATION_SECONDS = 2L
  *
  * The balloon is only shown if the "copy.setting.path.show.balloon" advanced setting is enabled.
  *
+ * When the source component is inside a JBPopup or menu, the balloon is shown relative to the
+ * component to ensure it appears in front (same z-order layer).
+ *
  * @param copiedPath The path that was copied to clipboard, to display in the balloon.
+ * @param sourceComponent The component from which the path was copied (used for z-order).
  */
-fun showCopiedBalloon(copiedPath: String) {
+@Suppress("UNUSED_PARAMETER")
+fun showCopiedBalloon(copiedPath: String, sourceComponent: Component? = null) {
     if (!AdvancedSettings.getBoolean(SHOW_BALLOON_SETTING_ID)) return
 
-    // Skip balloon when menu is open (balloon would appear behind menu)
-    if (MenuSelectionManager.defaultManager().selectedPath.isNotEmpty()) return
-
     val mouseLocation = MouseInfo.getPointerInfo()?.location ?: return
-    val point = RelativePoint(Point(mouseLocation.x, mouseLocation.y))
 
-    val balloon = JBPopupFactory.getInstance()
-        .createHtmlTextBalloonBuilder(copiedPath, null, null, null)
-        .setAnimationCycle(0)
-        .setRequestFocus(false)
-        .createBalloon()
+    showToast(copiedPath, mouseLocation)
+}
 
-    balloon.show(point, Balloon.Position.above)
+/** Currently visible toast window, if any. */
+@Volatile
+private var currentToast: ToastWindow? = null
 
-    // Schedule auto-hide after delay on EDT
+/**
+ * Shows a custom toast notification at the given screen location.
+ * Uses a heavyweight JWindow with setAlwaysOnTop to ensure it appears above menus/popups.
+ * Only one toast is shown at a time - previous toasts are closed when a new one appears.
+ */
+private fun showToast(text: String, screenLocation: Point) {
+    // Close any existing toast
+    currentToast?.dispose()
+
+    val toast = ToastWindow(text)
+    currentToast = toast
+
+    // Position above the mouse cursor
+    val toastSize = toast.preferredSize
+    val x = screenLocation.x - toastSize.width / 2
+    val y = screenLocation.y - toastSize.height - 10
+    toast.setLocation(x, y)
+
+    toast.isVisible = true
+
+    // Auto-hide after delay
     AppExecutorUtil.getAppScheduledExecutorService().schedule(
-        { ApplicationManager.getApplication().invokeLater { balloon.hide() } },
+        {
+            ApplicationManager.getApplication().invokeLater {
+                // Only dispose if this is still the current toast
+                if (currentToast === toast) {
+                    toast.dispose()
+                    currentToast = null
+                }
+            }
+        },
         BALLOON_DISPLAY_DURATION_SECONDS,
         TimeUnit.SECONDS
     )
+}
+
+/**
+ * A lightweight toast window that appears on top of all other windows.
+ * Any mouse click anywhere dismisses it.
+ * Also dismisses when another window is activated or a dialog opens.
+ */
+private class ToastWindow(text: String) : javax.swing.JWindow() {
+    private var mouseHandler: java.awt.event.AWTEventListener? = null
+    private var windowHandler: java.awt.event.AWTEventListener? = null
+    
+    init {
+        // Set window type to POPUP - this allows displaying without stealing focus
+        type = Type.POPUP
+        
+        val panel = javax.swing.JPanel(java.awt.BorderLayout()).apply {
+            border = javax.swing.BorderFactory.createCompoundBorder(
+                javax.swing.BorderFactory.createLineBorder(
+                    javax.swing.UIManager.getColor("Borders.color") ?: JBColor.border(), 1
+                ),
+                javax.swing.BorderFactory.createEmptyBorder(6, 10, 6, 10)
+            )
+            // Use tooltip colors for theme compatibility
+            background = javax.swing.UIManager.getColor("ToolTip.background") ?: JBColor.YELLOW
+            
+            val label = javax.swing.JLabel(text).apply {
+                foreground = javax.swing.UIManager.getColor("ToolTip.foreground") ?: JBColor.BLACK
+            }
+            add(label, java.awt.BorderLayout.CENTER)
+        }
+
+        contentPane = panel
+        pack()
+        
+        isAlwaysOnTop = true
+        
+        // Dismiss on any mouse click anywhere
+        mouseHandler = java.awt.event.AWTEventListener { event ->
+            if (event is java.awt.event.MouseEvent && event.id == java.awt.event.MouseEvent.MOUSE_PRESSED) {
+                dismissAndCleanup()
+            }
+        }
+        java.awt.Toolkit.getDefaultToolkit().addAWTEventListener(mouseHandler, java.awt.AWTEvent.MOUSE_EVENT_MASK)
+        
+        // Dismiss when another window is activated (e.g., dialog opens)
+        windowHandler = java.awt.event.AWTEventListener { event ->
+            if (event is java.awt.event.WindowEvent) {
+                when (event.id) {
+                    java.awt.event.WindowEvent.WINDOW_ACTIVATED,
+                    java.awt.event.WindowEvent.WINDOW_OPENED -> {
+                        // Another window was activated/opened - dismiss toast
+                        if (event.window !== this) {
+                            dismissAndCleanup()
+                        }
+                    }
+                }
+            }
+        }
+        java.awt.Toolkit.getDefaultToolkit().addAWTEventListener(windowHandler, java.awt.AWTEvent.WINDOW_EVENT_MASK)
+    }
+    
+    private fun dismissAndCleanup() {
+        mouseHandler?.let {
+            java.awt.Toolkit.getDefaultToolkit().removeAWTEventListener(it)
+            mouseHandler = null
+        }
+        windowHandler?.let {
+            java.awt.Toolkit.getDefaultToolkit().removeAWTEventListener(it)
+            windowHandler = null
+        }
+        if (currentToast === this) {
+            currentToast = null
+        }
+        dispose()
+    }
+    
+    override fun dispose() {
+        mouseHandler?.let {
+            java.awt.Toolkit.getDefaultToolkit().removeAWTEventListener(it)
+            mouseHandler = null
+        }
+        windowHandler?.let {
+            java.awt.Toolkit.getDefaultToolkit().removeAWTEventListener(it)
+            windowHandler = null
+        }
+        super.dispose()
+    }
 }
 
 // ============================================================================
