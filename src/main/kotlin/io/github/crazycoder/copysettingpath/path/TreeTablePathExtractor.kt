@@ -92,12 +92,19 @@ object TreeTablePathExtractor {
 
     /**
      * Appends path from a Tree component.
-     * Tries mouse location first, falls back to tree's selection path.
+     * Tries mouse location first (exact match, then closest), falls back to tree's selection path.
      */
     private fun appendTreeComponentPath(tree: Tree, e: AnActionEvent?, path: StringBuilder, separator: String) {
         // Try to get row from mouse location
         val point = getConvertedMousePoint(e, tree)
-        val rowForLocation = if (point != null) tree.getRowForLocation(point.x, point.y) else -1
+
+        // Try exact row match first
+        var rowForLocation = if (point != null) tree.getRowForLocation(point.x, point.y) else -1
+
+        // If exact match fails, try closest row (handles clicks on checkbox icons, etc.)
+        if (rowForLocation < 0 && point != null) {
+            rowForLocation = tree.getClosestRowForLocation(point.x, point.y)
+        }
 
         val treePath = if (rowForLocation >= 0) {
             tree.getPathForRow(rowForLocation)
@@ -172,17 +179,30 @@ object TreeTablePathExtractor {
     /**
      * Extracts the display text from a tree node.
      *
-     * For DefaultMutableTreeNode:
-     * 1. First try reflection on userObject to get display name (getName, getDisplayName, title, etc.)
-     * 2. If reflection fails, check if node.toString() differs from userObject.toString() -
+     * For DefaultMutableTreeNode and subclasses:
+     * 1. First try getText() on the node itself (handles MyToggleTreeNode in Code Style settings)
+     * 2. Then try reflection on userObject to get display name (getName, getDisplayName, title, etc.)
+     * 3. If reflection fails, check if node.toString() differs from userObject.toString() -
      *    this indicates a custom toString() override (like ColorOptionsTree.MyTreeNode)
-     * 3. Fall back to userObject.toString() if it looks like a display name
+     * 4. Fall back to userObject.toString() if it looks like a display name
      */
     private fun extractTreeNodeDisplayText(node: Any): String? {
         if (node is DefaultMutableTreeNode) {
-            val userObject = node.userObject ?: return null
+            // First try getText() on the node itself (handles MyToggleTreeNode in Code Style, etc.)
+            // Some tree nodes store display text in custom fields, not in userObject
+            extractDisplayNameViaReflection(node, "getText")?.let { return it }
 
-            // First try to get display name via reflection (handles InlayGroup.title(), etc.)
+            val userObject = node.userObject
+            if (userObject == null) {
+                // No userObject, but node might have toString() override
+                val nodeString = node.toString()
+                if (nodeString.isNotEmpty() && !looksLikeObjectReference(nodeString)) {
+                    return nodeString
+                }
+                return null
+            }
+
+            // Try to get display name via reflection on userObject (handles InlayGroup.title(), etc.)
             extractDisplayNameViaReflection(userObject)?.let { return it }
 
             // Check if node has a custom toString() override (like ColorOptionsTree.MyTreeNode)
