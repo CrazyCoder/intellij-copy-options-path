@@ -84,6 +84,9 @@ The plugin provides settings in **Settings | Advanced Settings** under the **Cop
 | **Intercept Ctrl/Cmd+Click for Copy Setting Path**      | Disabled | When enabled, Ctrl+Click (or Cmd+Click on macOS) in dialogs will copy the setting path **without activating UI components** like checkboxes or buttons. |
 | **Include adjacent value for labels ending with colon** | Enabled  | When enabled, labels ending with `:` will include the value of the adjacent component (combo box, text field, etc.) in the copied path.                 |
 | **Show balloon notification when path is copied**       | Enabled  | When enabled, a brief popup appears near the mouse cursor showing the path that was copied to the clipboard.                                            |
+| **Animate notification (bounce and highlight)**         | Enabled  | When enabled, the notification bounces in and highlights path segments sequentially. Disable for a simple fade-in/fade-out animation.                   |
+| **Play sound when path is copied**                      | Enabled  | When enabled, a brief sound plays when a path is copied to clipboard.                                                                                   |
+| **Notification display duration (seconds)**             | 1.5      | How long the notification stays visible before fading out. Supports decimal values (e.g., 1.5 for one and a half seconds).                              |
 | **Path separator style**                                | Pipe     | Choose the separator character used between path components in the copied setting path.                                                                 |
 
 #### Path Separator Styles
@@ -97,6 +100,20 @@ You can customize how path components are separated in the copied text:
 | **Unicode Arrow**  | `Settings → Editor → Code Style`   |
 | **Guillemet**      | `Settings » Editor » Code Style`   |
 | **Triangle**       | `Settings ▸ Editor ▸ Code Style`   |
+
+#### Toast Notification Features
+
+When a path is copied, a toast notification appears near the mouse cursor with the following features:
+
+- **Bounce Animation**: The toast bounces in with an elastic easing effect for a playful, attention-grabbing appearance
+- **Path Segment Highlighting**: After the bounce, each path segment is highlighted sequentially with a sweep effect,
+  making it easy to visually parse the copied path
+- **Sound Feedback**: A brief switch sound plays to provide audio confirmation
+- **Auto-dismiss**: The notification automatically fades out after the configured duration
+- **Click to Dismiss**: Click anywhere to immediately dismiss the notification
+
+All animation and sound features can be individually enabled or disabled in Advanced Settings. For a minimal experience,
+disable animations to get a simple fade-in/fade-out notification.
 
 #### When to Enable Mouse Interception
 
