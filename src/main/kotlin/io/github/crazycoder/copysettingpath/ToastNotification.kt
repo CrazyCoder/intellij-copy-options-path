@@ -11,9 +11,6 @@ import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.FloatControl
 import javax.sound.sampled.LineEvent
 import javax.swing.Timer
-import kotlin.math.PI
-import kotlin.math.pow
-import kotlin.math.sin
 
 /**
  * Toast notification system for the Copy Setting Path plugin.
@@ -21,7 +18,7 @@ import kotlin.math.sin
  *
  * Features:
  * - Rounded toast popup with checkmark icon
- * - Optional bounce-in animation with elastic easing
+ * - Optional rise animation
  * - Optional sequential path segment highlighting
  * - Configurable display duration
  * - Sound notification
@@ -47,11 +44,16 @@ private const val FADE_OUT_DURATION_MS = 200
 /** Animation timer step interval in milliseconds. */
 private const val ANIMATION_STEP_MS = 15
 
-/** Vertical distance for bounce animation start offset. */
-private const val BOUNCE_START_OFFSET = 20
+/**
+ * How far below its resting place the toast starts, in pixels.
+ *
+ * Small on purpose. The rise says "this just arrived", nothing more. Pointing at what was
+ * copied is the highlight sweep's job, and it can do that only once the text stops moving.
+ */
+private const val RISE_START_OFFSET = 8
 
-/** Bounce animation duration in milliseconds. */
-private const val BOUNCE_DURATION_MS = 300
+/** Rise animation duration in milliseconds. */
+private const val RISE_DURATION_MS = 140
 
 /** Delay between each segment highlight in milliseconds. */
 private const val HIGHLIGHT_DELAY_PER_SEGMENT_MS = 60
@@ -153,7 +155,7 @@ private fun playNotificationSound() {
 /**
  * Shows a custom toast notification at the given screen location.
  * Uses a heavyweight JWindow with setAlwaysOnTop to ensure it appears above menus/popups.
- * Features optional bounce-in animation and sequential path segment highlighting.
+ * Features an optional rise animation and sequential path segment highlighting.
  * Only one toast is shown at a time - previous toasts are closed when a new one appears.
  */
 private fun showToast(text: String, screenLocation: Point) {
@@ -171,12 +173,12 @@ private fun showToast(text: String, screenLocation: Point) {
     val targetY = screenLocation.y - toastSize.height - 10
 
     if (animationsEnabled) {
-        // Start below target for bounce animation
-        toast.setLocation(x, targetY + BOUNCE_START_OFFSET)
+        // Start below target for the rise animation
+        toast.setLocation(x, targetY + RISE_START_OFFSET)
         toast.setTargetY(targetY)
-        toast.showWithBounce()
+        toast.showWithRise()
     } else {
-        // Simple fade-in without bounce
+        // Simple fade-in without the rise
         toast.setLocation(x, targetY)
         toast.showWithFade()
     }
@@ -205,7 +207,7 @@ private fun showToast(text: String, screenLocation: Point) {
 
 /**
  * A lightweight toast window that appears on top of all other windows.
- * Features bounce-in animation and sequential path segment highlighting.
+ * Features a rise animation and sequential path segment highlighting.
  * Any mouse click anywhere dismisses it.
  * Also dismisses when another window is activated or a dialog opens.
  *
@@ -371,14 +373,14 @@ private class ToastWindow(text: String, private val separator: String) : javax.s
     }
 
     /**
-     * Sets the target Y position for the bounce animation.
+     * Sets the target Y position for the rise animation.
      */
     fun setTargetY(y: Int) {
         targetY = y
     }
 
     /**
-     * Shows the toast with a simple fade-in animation (no bounce or highlight).
+     * Shows the toast with a simple fade-in animation (no rise or highlight).
      */
     fun showWithFade() {
         opacity = 0f
@@ -397,29 +399,29 @@ private class ToastWindow(text: String, private val separator: String) : javax.s
     }
 
     /**
-     * Elastic ease-out function for bounce effect.
-     * Creates a spring-like overshoot and settle animation.
+     * Ease-out cubic: fast at the start, decelerating to a stop.
+     *
+     * Deliberately has no overshoot. The previous elastic easing crossed the resting position
+     * five times and overshot it by 5px, so the text kept moving under the reader's eye for the
+     * whole 300ms it took to settle.
      */
-    private fun elasticEaseOut(t: Float): Float {
-        if (t == 0f) return 0f
-        if (t == 1f) return 1f
-        val p = 0.4f
-        val s = p / 4
-        return (2.0.pow(-10.0 * t) * sin((t - s) * (2 * PI) / p) + 1).toFloat()
+    private fun easeOutCubic(t: Float): Float {
+        val inverted = 1f - t
+        return 1f - inverted * inverted * inverted
     }
 
     /**
-     * Shows the toast with a bounce-in animation and path highlight trail.
+     * Shows the toast rising a short distance into place, then sweeps the highlight.
      */
-    fun showWithBounce() {
+    fun showWithRise() {
         opacity = 0f
         // Start below target position
-        setLocation(x, targetY + BOUNCE_START_OFFSET)
+        setLocation(x, targetY + RISE_START_OFFSET)
         isVisible = true
 
         val startTime = System.currentTimeMillis()
         val fadeInDuration = FADE_IN_DURATION_MS.toLong()
-        val bounceDuration = BOUNCE_DURATION_MS.toLong()
+        val riseDuration = RISE_DURATION_MS.toLong()
 
         animationTimer = Timer(ANIMATION_STEP_MS) {
             val elapsed = System.currentTimeMillis() - startTime
@@ -428,18 +430,16 @@ private class ToastWindow(text: String, private val separator: String) : javax.s
             val opacityProgress = (elapsed.toFloat() / fadeInDuration).coerceIn(0f, 1f)
             opacity = opacityProgress
 
-            // Position animation (elastic bounce)
-            val bounceProgress = (elapsed.toFloat() / bounceDuration).coerceIn(0f, 1f)
-            val easedProgress = elasticEaseOut(bounceProgress)
-            val currentY = targetY + BOUNCE_START_OFFSET - (BOUNCE_START_OFFSET * easedProgress).toInt()
+            // Position animation (decelerating rise)
+            val riseProgress = (elapsed.toFloat() / riseDuration).coerceIn(0f, 1f)
+            val currentY = targetY + RISE_START_OFFSET - (RISE_START_OFFSET * easeOutCubic(riseProgress)).toInt()
             setLocation(x, currentY)
 
-            // Stop animation when bounce is complete
-            if (elapsed >= bounceDuration) {
+            if (elapsed >= riseDuration) {
                 animationTimer?.stop()
                 animationTimer = null
                 setLocation(x, targetY)
-                // Start highlight trail after bounce completes
+                // Sweep only once the text has stopped moving, so it can be read
                 startHighlightTrail()
             }
         }.apply { start() }

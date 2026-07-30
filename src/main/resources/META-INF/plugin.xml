@@ -17,7 +17,7 @@
       <li>Handles tree structures, tabs, titled panels, buttons, labels, and tables</li>
       <li>Configurable path separator style (pipe, arrow, or breadcrumb) via <b>Advanced Settings</b></li>
       <li>Optional mouse click interception via <b>Advanced Settings</b></li>
-      <li>Toast notification with bounce animation and path segment highlighting</li>
+      <li>Toast notification with path segment highlighting</li>
       <li>Optional sound feedback when path is copied</li>
     </ul>
 
@@ -41,7 +41,7 @@
       <li><b>Balloon notification</b>: Toggle the brief popup that appears near the mouse cursor when a path is copied
         (enabled by default)
       </li>
-      <li><b>Notification animations</b>: Enable bounce-in animation and sequential path segment highlighting</li>
+      <li><b>Notification animations</b>: Enable the rise animation and sequential path segment highlighting</li>
       <li><b>Sound feedback</b>: Play a brief sound when a path is copied</li>
       <li><b>Display duration</b>: Configure how long the notification stays visible (supports decimal values)</li>
     </ul>
