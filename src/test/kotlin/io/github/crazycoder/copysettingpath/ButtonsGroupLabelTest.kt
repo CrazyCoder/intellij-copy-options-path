@@ -1,7 +1,6 @@
 package io.github.crazycoder.copysettingpath
 
 import com.intellij.testFramework.ApplicationRule
-import com.intellij.testFramework.runInEdtAndWait
 import com.intellij.ui.dsl.builder.panel
 import io.github.crazycoder.copysettingpath.path.ComponentLabelExtractor
 import org.junit.Assert.assertEquals
@@ -10,6 +9,7 @@ import org.junit.Test
 import java.awt.Component
 import java.awt.Container
 import javax.swing.AbstractButton
+import javax.swing.SwingUtilities
 
 /**
  * Covers the title of a vertical Kotlin UI DSL buttons group.
@@ -32,8 +32,19 @@ class ButtonsGroupLabelTest {
      */
     private val labels: Map<String, String?> by lazy {
         var result: Map<String, String?> = emptyMap()
-        runInEdtAndWait { result = buildLabels() }
+        onEdt { result = buildLabels() }
         result
+    }
+
+    /**
+     * Builds the sample page on the event thread.
+     *
+     * Swing itself is used rather than the test framework helper, because the helper is a Kotlin
+     * top level function whose facade class is not on the classpath of every IDE the suite runs
+     * against, and a missing facade fails the whole class before a single case runs.
+     */
+    private fun onEdt(block: () -> Unit) {
+        if (SwingUtilities.isEventDispatchThread()) block() else SwingUtilities.invokeAndWait(block)
     }
 
     private fun buildLabels(): Map<String, String?> {
