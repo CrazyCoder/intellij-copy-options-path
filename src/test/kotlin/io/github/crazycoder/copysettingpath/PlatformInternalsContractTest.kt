@@ -117,12 +117,13 @@ class PlatformInternalsContractTest {
      * ever goes, this fails before a release rather than after one.
      */
     @Test
-    fun `IdeEventQueue still takes a dispatcher bound to a scope`() {
+    fun `IdeEventQueue still accepts an EventDispatcher bound to a Disposable`() {
         val overload = com.intellij.ide.IdeEventQueue::class.java.methods.firstOrNull {
             it.name == "addDispatcher" &&
                     it.parameterTypes.size == 2 &&
-                    it.parameterTypes[1].name == "kotlinx.coroutines.CoroutineScope"
+                    it.parameterTypes[0].name == "com.intellij.ide.IdeEventQueue\$EventDispatcher" &&
+                    it.parameterTypes[1].name == "com.intellij.openapi.Disposable"
         }
-        assertNotNull("IdeEventQueue.addDispatcher(EventDispatcher, CoroutineScope) is gone", overload)
+        assertNotNull("IdeEventQueue.addDispatcher(EventDispatcher, Disposable) is gone", overload)
     }
 }

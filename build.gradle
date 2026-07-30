@@ -53,6 +53,13 @@ kotlin {
         // Pin the API version to the oldest bundled stdlib so newer stdlib members,
         // which are absent at runtime on older IDEs, cannot be called.
         apiVersion = KotlinVersion.KOTLIN_2_1
+
+        // Inherit interface default methods instead of generating a compatibility override for
+        // each one. Without this, implementing DynamicPluginListener emits a bridge for every
+        // method the class does not override, including the deprecated checkUnloadPlugin, which
+        // the plugin verifier then reports as deprecated API usage the plugin never wrote.
+        // The platform compiles the same way: its own listeners carry no such bridges.
+        jvmDefault = org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY
     }
 }
 

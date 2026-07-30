@@ -28,7 +28,6 @@ import java.awt.event.InputEvent
 import java.awt.event.MouseEvent
 import java.util.concurrent.atomic.AtomicReference
 import javax.swing.SwingUtilities
-import kotlinx.coroutines.CoroutineScope
 
 /**
  * Intercepts mouse events to prevent component activation (checkbox toggle, button press, etc.)
@@ -48,12 +47,9 @@ import kotlinx.coroutines.CoroutineScope
  *
  * Registered via [CopySettingPathAppLifecycleListener] when the application frame is created,
  * ensuring it's initialized early before any dialogs can be opened.
- *
- * @param coroutineScope The service scope, injected by the platform. It bounds the event
- *   dispatcher registration, which is the supported alternative to passing a Disposable.
  */
 @Service(Service.Level.APP)
-class MouseEventInterceptor(private val coroutineScope: CoroutineScope) : Disposable {
+class MouseEventInterceptor : Disposable {
 
     companion object {
         private const val COPY_OPTIONS_PATH_ACTION_ID = "CopySettingPath"
@@ -103,11 +99,18 @@ class MouseEventInterceptor(private val coroutineScope: CoroutineScope) : Dispos
             // Initialize the cached shortcut
             updateMouseShortcut()
 
-            // Register event dispatcher. The Disposable overload is deprecated since 2026.1;
-            // the scope overload exists as far back as 2025.1, so it works across the range.
+            // Register event dispatcher.
+            //
+            // Every EventDispatcher overload is deprecated since 2026.1 in favour of
+            // NonLockedEventDispatcher, a marker saying the dispatcher runs without the
+            // write-intent lock. That interface does not exist in 2025.1, so it cannot be used
+            // while the plugin is compiled against the oldest supported IDE.
+            //
+            // Of the two overloads that do exist there, this one is only deprecated, while the
+            // CoroutineScope one is also marked for removal. Revisit when sinceBuild reaches 261.
             IdeEventQueue.getInstance().addDispatcher(
                 { event -> interceptMouseEvent(event) },
-                coroutineScope
+                this
             )
 
             // Listen for keymap changes - keep strong reference to prevent GC
