@@ -198,6 +198,40 @@ tasks.named('verifyPluginSignature') {
 }
 
 /**
+ * Prints the plugin version on its own line, for `gradlew --quiet printPluginVersion`.
+ *
+ * The release workflow checks it against the tag being released, so a tag that does not match the
+ * version in this file fails before anything is published.
+ */
+tasks.register('printPluginVersion') {
+    group = 'help'
+    description = 'Prints the plugin version, with no other output.'
+
+    def pluginVersion = project.version.toString()
+    doLast { println pluginVersion }
+}
+
+/**
+ * Prints the change notes as HTML, for `gradlew --quiet printChangeNotes`.
+ *
+ * The release workflow seeds the draft release notes with this, so the release always starts from
+ * the notes that shipped in the plugin. GitHub renders the list markup. A human rewrites the text
+ * before the release goes public.
+ *
+ * Every line is trimmed, because the source string is indented to sit inside this file and four
+ * leading spaces turn a line into a code block in Markdown.
+ */
+tasks.register('printChangeNotes') {
+    group = 'help'
+    description = 'Prints the plugin change notes as HTML, with no other output.'
+
+    def notes = intellijPlatform.pluginConfiguration.changeNotes
+    doLast {
+        println notes.get().readLines()*.trim().findAll { !it.isEmpty() }.join('\n')
+    }
+}
+
+/**
  * Reports which release secrets resolve, and from where, without printing their values.
  *
  * Run before a release to check that .env or the environment is wired up, instead of finding

@@ -1,0 +1,210 @@
+name: Release
+
+# Builds a tag and opens a draft GitHub release for it.
+#
+# The release notes start as the changeNotes from build.gradle. Rewrite them into readable prose
+# before publishing the draft. Signing and the JetBrains Marketplace upload stay local, so this
+# workflow needs no secrets:
+#
+#   gradlew signPlugin verifyPluginSignature publishPlugin
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release, for example v1.5. Leave empty when the workflow is started on the tag itself.'
+        required: false
+        type: string
+      draft:
+        description: 'Open the release as a draft, so the notes can be rewritten before it is public'
+        required: false
+        type: boolean
+        default: true
+      skip_checks:
+        description: 'Skip the contract tests and the verifier. Only for re-running a release that already passed them.'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  resolve:
+    name: Resolve the tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      previous_tag: ${{ steps.resolve.outputs.previous_tag }}
+    steps:
+      # The whole history, so the tag and the tag before it can both be resolved
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Resolve the tag and check it against the plugin version
+        id: resolve
+        env:
+          # Through the environment, never interpolated into the script, because the input is text
+          # someone types
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          tag="$INPUT_TAG"
+          if [ -z "$tag" ] && [ "$REF_TYPE" = tag ]; then
+            tag="$REF_NAME"
+          fi
+          if [ -z "$tag" ]; then
+            echo "::error::No tag to release. Start the workflow on the tag, or type the tag into the input."
+            exit 1
+          fi
+          if ! git rev-parse -q --verify "refs/tags/$tag^{commit}" > /dev/null; then
+            echo "::error::Tag $tag does not exist. Push the tag first."
+            exit 1
+          fi
+
+          git checkout --detach "$tag"
+
+          # The version comes from the build, so this cannot drift from what the plugin reports
+          version=$(./gradlew --quiet printPluginVersion)
+          if [ "$tag" != "v$version" ]; then
+            echo "::error::Tag $tag does not match the plugin version $version in build.gradle."
+            exit 1
+          fi
+
+          # Empty for the first tag, which is fine. The compare link is then left out.
+          previous_tag=$(git describe --tags --abbrev=0 "$tag^" 2> /dev/null || true)
+
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "previous_tag=$previous_tag"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Releasing $tag, plugin version $version, previous tag ${previous_tag:-none}"
+
+  check:
+    name: ${{ matrix.task }}
+    needs: resolve
+    if: ${{ !inputs.skip_checks }}
+    runs-on: ubuntu-latest
+    # The same gates the Build workflow runs, but pinned to the tagged commit rather than to
+    # whatever master pointed at when the tag was pushed
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [ test20261, test20262, verifyPlugin ]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Run ${{ matrix.task }}
+        run: ./gradlew ${{ matrix.task }}
+
+      - name: Upload the verifier report
+        if: ${{ always() && matrix.task == 'verifyPlugin' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: plugin-verifier-report
+          path: build/reports/pluginVerifier
+
+  release:
+    name: Draft the release
+    needs: [ resolve, check ]
+    # `always()` so this still runs when the checks were skipped on purpose, and the rest of the
+    # condition keeps it from running when they were skipped because they failed
+    if: ${{ always() && needs.resolve.result == 'success' && (needs.check.result == 'success' || inputs.skip_checks) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Build the plugin
+        run: ./gradlew buildPlugin
+
+      - name: Compose the draft notes
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          PREVIOUS_TAG: ${{ needs.resolve.outputs.previous_tag }}
+          COMPARE_BASE: ${{ github.server_url }}/${{ github.repository }}/compare
+        run: |
+          set -euo pipefail
+          {
+            echo "<!-- Seeded from the changeNotes in build.gradle. Rewrite this before publishing. -->"
+            echo
+            echo "### Changes"
+            ./gradlew --quiet printChangeNotes
+            if [ -n "$PREVIOUS_TAG" ]; then
+              echo
+              echo "**Full Changelog**: $COMPARE_BASE/$PREVIOUS_TAG...$TAG"
+            fi
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Open the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          DRAFT: ${{ inputs.draft }}
+        run: |
+          set -euo pipefail
+
+          asset="build/distributions/CopySettingPath-$VERSION.zip"
+          if [ ! -f "$asset" ]; then
+            echo "::error::$asset was not built."
+            exit 1
+          fi
+
+          # Re-running the workflow replaces the asset and leaves the notes alone, so a rewrite
+          # already made in the GitHub editor is never overwritten
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists. Replacing the asset and keeping the notes."
+            gh release upload "$TAG" "$asset" --clobber
+          else
+            draft_flag=()
+            if [ "$DRAFT" = true ]; then
+              draft_flag=(--draft)
+            fi
+            gh release create "$TAG" "$asset" \
+              --title "$TAG" \
+              --notes-file release-notes.md \
+              "${draft_flag[@]}"
+          fi
+
+          {
+            echo "### $TAG"
+            echo
+            echo "- Release: $(gh release view "$TAG" --json url --jq .url)"
+            echo "- Asset: \`$(basename "$asset")\`"
+            echo
+            echo "Next: rewrite the notes and publish the release, then run"
+            echo '`gradlew signPlugin verifyPluginSignature publishPlugin` locally.'
+          } >> "$GITHUB_STEP_SUMMARY"
