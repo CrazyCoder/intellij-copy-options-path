@@ -50,6 +50,11 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
+      # The tag being released may predate the commit that recorded the wrapper as executable, and
+      # `core.filemode=false` on Windows lets that bit go missing again without showing in a diff
+      - name: Make the wrapper executable
+        run: chmod +x gradlew
+
       - name: Resolve the tag and check it against the plugin version
         id: resolve
         env:
@@ -117,6 +122,9 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
+      - name: Make the wrapper executable
+        run: chmod +x gradlew
+
       - name: Run ${{ matrix.task }}
         run: ./gradlew ${{ matrix.task }}
 
@@ -145,6 +153,9 @@ jobs:
           java-version: 21
 
       - uses: gradle/actions/setup-gradle@v6
+
+      - name: Make the wrapper executable
+        run: chmod +x gradlew
 
       - name: Build the plugin
         run: ./gradlew buildPlugin
