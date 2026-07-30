@@ -106,8 +106,8 @@ You can customize how path components are separated in the copied text:
 When a path is copied, a toast notification appears near the mouse cursor with the following features:
 
 - **Rise Animation**: The toast rises a short distance into place and stops, so the text is steady while you read it
-- **Path Segment Highlighting**: Once the toast settles, each path segment is highlighted in turn with a sweep effect,
-  making it easy to visually parse the copied path
+- **Path Segment Highlighting**: Once the toast settles, a highlight sweeps across the path and leaves a fading trail
+  behind it, so the segments read in order and the whole path stays easy to parse
 - **Sound Feedback**: A brief switch sound plays to provide audio confirmation
 - **Auto-dismiss**: The notification automatically fades out after the configured duration
 - **Click to Dismiss**: Click anywhere to immediately dismiss the notification

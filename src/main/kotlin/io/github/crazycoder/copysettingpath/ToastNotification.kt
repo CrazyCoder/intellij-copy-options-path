@@ -55,8 +55,25 @@ private const val RISE_START_OFFSET = 8
 /** Rise animation duration in milliseconds. */
 private const val RISE_DURATION_MS = 140
 
-/** Delay between each segment highlight in milliseconds. */
-private const val HIGHLIGHT_DELAY_PER_SEGMENT_MS = 60
+/** How long the sweep waits before moving on to the next segment, in milliseconds. */
+private const val SWEEP_SEGMENT_DELAY_MS = 110
+
+/**
+ * How long a segment takes to fade out after the sweep has passed it, in milliseconds.
+ *
+ * Longer than [SWEEP_SEGMENT_DELAY_MS] on purpose: segments the sweep has already passed are
+ * still fading while the next ones light up, which is what makes it read as a trail rather than
+ * as a single block moving along.
+ */
+private const val SWEEP_TRAIL_FADE_MS = 320
+
+/**
+ * Longest the sweep may take to reach the last segment, in milliseconds.
+ *
+ * Long paths would otherwise still be sweeping when the toast starts to fade out. Past this
+ * budget the sweep moves faster instead of running out of time.
+ */
+private const val SWEEP_MAX_ADVANCE_MS = 600
 
 /** Corner radius for the toast popup. */
 private const val TOAST_CORNER_RADIUS = 12
@@ -65,7 +82,7 @@ private const val TOAST_CORNER_RADIUS = 12
 private const val SEGMENT_CORNER_RADIUS = 8
 
 /**
- * Alpha of the segment highlight, over the toast background (0-255).
+ * Alpha of a fully lit segment highlight, over the toast background (0-255).
  *
  * 70 lands at a contrast ratio of about 1.96 against the notification background in both the
  * light and the dark theme, which reads as a clear but soft highlight. The value is symmetric
@@ -230,22 +247,27 @@ private class ToastWindow(text: String, private val separator: String) : javax.s
      * theme, including custom ones. The border colour is not: in Islands Dark the notification
      * border and background are both #33353B, so a highlight derived from the border blended to
      * exactly the background and the sweep was invisible.
+     *
+     * @param intensity How lit the segment is, from 0 for gone to 1 for the head of the sweep.
      */
     @Suppress("UseJBColor")
-    private val highlightColor: java.awt.Color
-        get() {
-            val foreground = com.intellij.util.ui.JBUI.CurrentTheme.NotificationInfo.foregroundColor()
-            return java.awt.Color(foreground.red, foreground.green, foreground.blue, HIGHLIGHT_ALPHA)
-        }
+    private fun highlightColor(intensity: Float): java.awt.Color {
+        val foreground = com.intellij.util.ui.JBUI.CurrentTheme.NotificationInfo.foregroundColor()
+        val alpha = (HIGHLIGHT_ALPHA * intensity).toInt().coerceIn(0, HIGHLIGHT_ALPHA)
+        return java.awt.Color(foreground.red, foreground.green, foreground.blue, alpha)
+    }
 
     /**
      * Custom label that properly paints semi-transparent highlight backgrounds.
      * Shows a rounded highlight sweep effect.
      */
     private inner class HighlightableLabel(text: String) : javax.swing.JLabel(text) {
-        var highlighted: Boolean = false
+        /** How lit this segment is, from 0 for gone to 1 for the head of the sweep. */
+        var highlightIntensity: Float = 0f
             set(value) {
-                field = value
+                val clamped = value.coerceIn(0f, 1f)
+                if (clamped == field) return
+                field = clamped
                 repaint()
             }
 
@@ -257,13 +279,17 @@ private class ToastWindow(text: String, private val separator: String) : javax.s
 
         override fun paintComponent(g: java.awt.Graphics) {
             val g2 = g.create() as java.awt.Graphics2D
+            g2.setRenderingHint(
+                java.awt.RenderingHints.KEY_ANTIALIASING,
+                java.awt.RenderingHints.VALUE_ANTIALIAS_ON
+            )
             // First fill with normal background to clear any previous content
             g2.color = normalBackground
             g2.fillRoundRect(0, 0, width, height, SEGMENT_CORNER_RADIUS, SEGMENT_CORNER_RADIUS)
 
-            // Then paint highlight on top if active (with rounded corners)
-            if (highlighted) {
-                g2.color = highlightColor
+            // Then paint the highlight on top, as far as this segment is still lit
+            if (highlightIntensity > 0f) {
+                g2.color = highlightColor(highlightIntensity)
                 g2.fillRoundRect(0, 0, width, height, SEGMENT_CORNER_RADIUS, SEGMENT_CORNER_RADIUS)
             }
 
@@ -446,25 +472,38 @@ private class ToastWindow(text: String, private val separator: String) : javax.s
     }
 
     /**
-     * Animates highlight through path segments sequentially.
+     * Sweeps a highlight across the path segments, leaving a fading trail behind it.
+     *
+     * Every segment is driven from one clock rather than being switched on and off in turn. A
+     * segment lights fully the moment the sweep reaches it and then fades over
+     * [SWEEP_TRAIL_FADE_MS], which outlasts the step to the next segment, so several segments
+     * are lit at once at decreasing strength and the sweep reads as a trail.
      */
     private fun startHighlightTrail() {
         if (segmentLabels.isEmpty()) return
 
-        var currentIndex = 0
-        highlightTimer = Timer(HIGHLIGHT_DELAY_PER_SEGMENT_MS) {
-            // Clear previous highlight
-            if (currentIndex > 0) {
-                segmentLabels[currentIndex - 1].highlighted = false
+        val steps = segmentLabels.size - 1
+        // Keep long paths from still sweeping when the toast begins to fade out
+        val segmentDelay = when {
+            steps <= 0 -> 0
+            else -> minOf(SWEEP_SEGMENT_DELAY_MS, SWEEP_MAX_ADVANCE_MS / steps)
+        }
+        val totalDuration = steps * segmentDelay + SWEEP_TRAIL_FADE_MS
+        val startTime = System.currentTimeMillis()
+
+        highlightTimer = Timer(ANIMATION_STEP_MS) {
+            val elapsed = System.currentTimeMillis() - startTime
+
+            segmentLabels.forEachIndexed { index, label ->
+                val age = elapsed - index.toLong() * segmentDelay
+                label.highlightIntensity = when {
+                    age < 0 -> 0f
+                    else -> 1f - age.toFloat() / SWEEP_TRAIL_FADE_MS
+                }
             }
 
-            // Highlight current segment
-            if (currentIndex < segmentLabels.size) {
-                segmentLabels[currentIndex].highlighted = true
-                currentIndex++
-            } else {
-                // Clear last highlight and stop
-                segmentLabels.lastOrNull()?.highlighted = false
+            if (elapsed >= totalDuration) {
+                segmentLabels.forEach { it.highlightIntensity = 0f }
                 highlightTimer?.stop()
                 highlightTimer = null
             }
@@ -479,7 +518,7 @@ private class ToastWindow(text: String, private val separator: String) : javax.s
         highlightTimer?.stop()
 
         // Clear any remaining highlights
-        segmentLabels.forEach { it.highlighted = false }
+        segmentLabels.forEach { it.highlightIntensity = 0f }
 
         val steps = FADE_OUT_DURATION_MS / ANIMATION_STEP_MS
         val opacityStep = 1.0f / steps
