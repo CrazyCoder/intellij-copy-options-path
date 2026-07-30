@@ -84,9 +84,10 @@ object RegexPatterns {
      * Pattern to match Advanced Settings ID display in HTML labels.
      * In Advanced Settings, the setting ID is shown after a <br> tag, e.g.:
      * <html>Label text<br><pre><font...>setting.id.here</font>...</html>
-     * This pattern removes the <br> and everything after it.
+     * This pattern removes the <br> and everything after it. It requires the <pre> that
+     * Advanced Settings emits, so ordinary multi-line labels keep their remaining lines.
      */
-    val HTML_SETTING_ID_SUFFIX: Regex = Regex("<br>.*", RegexOption.DOT_MATCHES_ALL)
+    val HTML_SETTING_ID_SUFFIX: Regex = Regex("<br>\\s*<pre.*", RegexOption.DOT_MATCHES_ALL)
 
     /** Pattern to match Advanced Settings IDs appended to labels (requires colon separator). */
     val ADVANCED_SETTING_ID: Regex = Regex(":[a-z][a-z0-9]*(?:\\.[a-z0-9]+)+$")
@@ -153,12 +154,8 @@ fun appendItem(
 
     if (!allowDuplicate) {
         // Check for exact segment match (not just suffix match)
-        val trimmedPath =
-            path.trimEnd { it in PathSeparator.allSeparatorChars }
-                .toString()
-        val lastSegment =
-            trimmedPath.substringAfterLast(separator.trim())
-                .trim()
+        val trimmedPath = path.toString().trimTrailingSeparators(separator)
+        val lastSegment = trimmedPath.substringAfterLast(separator).trim()
         if (lastSegment == cleanItem) return
     }
 
@@ -168,14 +165,32 @@ fun appendItem(
 }
 
 /**
+ * Removes trailing separators and whitespace from a path.
+ *
+ * Only the separator that is actually in use is removed, and only as a whole. Trimming the
+ * set of characters used by every separator style would eat characters that belong to a value,
+ * turning "<default>" into "<default" and "List<String>" into "List<String".
+ *
+ * @param separator The separator in use.
+ */
+private fun String.trimTrailingSeparators(separator: String): String {
+    var result = this
+    while (separator.isNotEmpty() && result.endsWith(separator)) {
+        result = result.dropLast(separator.length)
+    }
+    return result.trimEnd()
+}
+
+/**
  * Trims the final result by removing trailing separators, HTML tags, and Advanced Settings IDs.
  *
  * @param path The path StringBuilder to process.
+ * @param separator The separator in use.
  * @return The cleaned path string.
  */
-fun trimFinalResult(path: StringBuilder): String {
+fun trimFinalResult(path: StringBuilder, separator: String = PathConstants.SEPARATOR): String {
     return path.toString()
-        .trimEnd { it in PathSeparator.allSeparatorChars }
+        .trimTrailingSeparators(separator)
         .removeHtmlTags()
         .removeAdvancedSettingIds()
 }

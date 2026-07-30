@@ -69,8 +69,6 @@
       simultaneously.</p>
     ]]></description>
 
-  <idea-version since-build="251"/>
-
   <!-- Declare incompatibility with the legacy "Copy Option Path" plugin -->
   <!--suppress PluginXmlValidity -->
   <incompatible-with>com.intellij.plugin.copy.options</incompatible-with>

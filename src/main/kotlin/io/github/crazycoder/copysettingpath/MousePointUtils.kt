@@ -27,7 +27,7 @@ fun detectRowFromMousePoint(treeTable: TreeTable, e: AnActionEvent?): Int {
     if (e == null) return -1
     val point = getConvertedMousePoint(e, treeTable) ?: return -1
     val rowAtPoint = treeTable.rowAtPoint(point)
-    return if (rowAtPoint <= treeTable.rowCount) rowAtPoint else -1
+    return if (rowAtPoint in 0 until treeTable.rowCount) rowAtPoint else -1
 }
 
 /**

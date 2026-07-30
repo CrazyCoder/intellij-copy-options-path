@@ -3,6 +3,7 @@ package io.github.crazycoder.copysettingpath.path
 import com.intellij.ide.DataManager
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.ActionToolbar
+import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.Toggleable
 import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.openapi.options.ex.Settings
@@ -46,10 +47,16 @@ object SettingsPathExtractor {
      * @param e The action event, whose data context is preferred when available.
      * @return true if the component is inside the Settings window.
      */
-    fun isInSettingsWindow(component: Component, e: AnActionEvent? = null): Boolean {
-        e?.let { return it.getData(Settings.KEY) != null }
-        return Settings.KEY.getData(DataManager.getInstance().getDataContext(component)) != null
-    }
+    fun isInSettingsWindow(component: Component, e: AnActionEvent? = null): Boolean =
+        isInSettingsWindow(e?.dataContext ?: DataManager.getInstance().getDataContext(component))
+
+    /**
+     * Checks whether a data context belongs to the Settings window.
+     *
+     * @param dataContext The data context to check.
+     * @return true if the context comes from the Settings window.
+     */
+    fun isInSettingsWindow(dataContext: DataContext): Boolean = Settings.KEY.getData(dataContext) != null
 
     /**
      * Finds the SettingsEditor that owns the given component.

@@ -1,6 +1,8 @@
 package io.github.crazycoder.copysettingpath.path
 
+import com.intellij.ide.DataManager
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.options.ex.SingleConfigurableEditor
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.ComponentUtil
@@ -28,6 +30,26 @@ import javax.swing.SwingUtilities
  * 3. Add component label via labeledBy property
  */
 object PathBuilder {
+
+    /**
+     * Checks whether a path could be built for the component.
+     *
+     * Both the action's update() and the mouse interceptor ask this, so the contexts the action
+     * is enabled in and the contexts the interceptor swallows a click in cannot drift apart.
+     *
+     * @param src The source UI component.
+     * @param e The action event, whose data context is preferred when available.
+     * @return true if the component sits in a context this plugin can build a path for.
+     */
+    fun hasPathContext(src: Component?, e: AnActionEvent? = null): Boolean {
+        if (src == null) return false
+        if (DialogWrapper.findInstance(src) != null) return true
+        if (PopupPathExtractor.isInPopupContext(src)) return true
+
+        val dataContext = e?.dataContext ?: DataManager.getInstance().getDataContext(src)
+        return SettingsPathExtractor.isInSettingsWindow(dataContext) ||
+                PlatformDataKeys.TOOL_WINDOW.getData(dataContext) != null
+    }
 
     /**
      * Builds the complete setting path for the given source component.

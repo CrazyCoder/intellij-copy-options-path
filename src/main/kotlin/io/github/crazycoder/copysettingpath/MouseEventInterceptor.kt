@@ -21,7 +21,7 @@ import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.ui.TextTransferable
 import io.github.crazycoder.copysettingpath.actions.CopySettingPath
 import io.github.crazycoder.copysettingpath.path.MenuPathExtractor
-import io.github.crazycoder.copysettingpath.path.PopupPathExtractor
+import io.github.crazycoder.copysettingpath.path.PathBuilder
 import java.awt.AWTEvent
 import java.awt.Component
 import java.awt.event.InputEvent
@@ -271,6 +271,10 @@ class MouseEventInterceptor : Disposable {
      * Handles MOUSE_PRESSED events.
      * Blocks the event if it matches the CopySettingPath shortcut.
      * For menu components, also records that we need to copy the path on release.
+     *
+     * Only contexts the action is actually enabled in are blocked. Blocking everywhere would
+     * swallow the press in the editor and the project view too, where the action does nothing
+     * and the same shortcut means Go To Declaration or add-to-selection.
      */
     private fun handleMousePressed(event: MouseEvent): Boolean {
         // Check if the modifier keys match our shortcut
@@ -298,24 +302,13 @@ class MouseEventInterceptor : Disposable {
             return true
         }
 
-        // Check if this is a popup component (prevents list selection changes)
-        if (component != null && PopupPathExtractor.isInPopupContext(component)) {
-            pendingMenuCopy.set(null)
-            LOG.debug {
-                "Blocking MOUSE_PRESSED in popup for CopySettingPath (shortcut: ${
-                    cachedMouseShortcut?.let {
-                        formatShortcut(
-                            it
-                        )
-                    }
-                })"
-            }
-            return true
-        }
-
-        // For non-menu, non-popup components, just block MOUSE_PRESSED as before
-        // The MOUSE_RELEASED will still trigger our action via the normal shortcut mechanism
         pendingMenuCopy.set(null)
+
+        // Outside a context the action handles, leave the click alone
+        if (!PathBuilder.hasPathContext(component)) return false
+
+        // Block the press so the click does not toggle a checkbox or change a selection.
+        // MOUSE_RELEASED still triggers the action through the normal shortcut mechanism.
         LOG.debug {
             "Blocking MOUSE_PRESSED to prevent component activation for CopySettingPath (shortcut: ${
                 cachedMouseShortcut?.let {
@@ -366,7 +359,7 @@ class MouseEventInterceptor : Disposable {
         val path = MenuPathExtractor.buildMenuPath(component, separator)
 
         if (path != null) {
-            val result = trimFinalResult(StringBuilder(path))
+            val result = trimFinalResult(StringBuilder(path), separator)
             LOG.debug { "Copying menu path: $result" }
             CopyPasteManager.getInstance().setContents(TextTransferable(result, result))
             showCopiedBalloon(result, component)

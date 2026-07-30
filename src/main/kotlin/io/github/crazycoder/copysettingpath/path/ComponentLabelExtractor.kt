@@ -130,7 +130,6 @@ object ComponentLabelExtractor {
 
         // Fall back to component's own text
         return when (component) {
-            is JToggleButton -> component.text?.removeHtmlTags()?.trim()?.takeIf { it.isNotEmpty() }
             is JLabel -> component.text?.removeHtmlTags()?.trim()?.takeIf { it.isNotEmpty() }
             is AbstractButton -> component.text?.removeHtmlTags()?.trim()?.takeIf { it.isNotEmpty() }
             else -> null

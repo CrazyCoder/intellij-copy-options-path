@@ -6,13 +6,10 @@ import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.options.advanced.AdvancedSettings
 import com.intellij.openapi.project.DumbAwareAction
-import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.util.ui.TextTransferable
 import io.github.crazycoder.copysettingpath.LOG
 import io.github.crazycoder.copysettingpath.PathSeparator
 import io.github.crazycoder.copysettingpath.path.PathBuilder
-import io.github.crazycoder.copysettingpath.path.PopupPathExtractor
-import io.github.crazycoder.copysettingpath.path.SettingsPathExtractor
 import io.github.crazycoder.copysettingpath.showCopiedBalloon
 import io.github.crazycoder.copysettingpath.trimFinalResult
 
@@ -38,12 +35,7 @@ class CopySettingPath : DumbAwareAction() {
 
     override fun update(e: AnActionEvent) {
         val src = e.getData(PlatformDataKeys.CONTEXT_COMPONENT)
-        val hasDialog = src != null && DialogWrapper.findInstance(src) != null
-        // The Settings window is not a DialogWrapper since 2026.2, so it needs its own check
-        val hasSettings = src != null && SettingsPathExtractor.isInSettingsWindow(src, e)
-        val hasPopup = src != null && PopupPathExtractor.isInPopupContext(src)
-        val hasToolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) != null
-        e.presentation.isEnabled = hasDialog || hasSettings || hasPopup || hasToolWindow
+        e.presentation.isEnabled = PathBuilder.hasPathContext(src, e)
     }
 
     override fun actionPerformed(e: AnActionEvent) {
@@ -51,7 +43,7 @@ class CopySettingPath : DumbAwareAction() {
         val separator = getPathSeparator()
 
         val path = PathBuilder.buildPath(src, e, separator) ?: return
-        val result = trimFinalResult(StringBuilder(path))
+        val result = trimFinalResult(StringBuilder(path), separator)
 
         LOG.debug("Selected path: $result")
         e.inputEvent?.consume()
