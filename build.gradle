@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+
 plugins {
     id 'java'
     id 'org.jetbrains.kotlin.jvm' version '2.3.0'
@@ -5,7 +7,7 @@ plugins {
 }
 
 group = 'io.github.crazycoder.copysettingpath'
-version = '1.3'
+version = '1.4'
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21
@@ -21,16 +23,27 @@ repositories {
 
 dependencies {
     intellijPlatform {
+        // Build against the lowest supported IDE.
+        // The plugin supports 2025.1 (Java 21) up to 2026.2+ (Java 25). When the supported range
+        // spans different Java requirements, the IntelliJ Platform docs require building against
+        // the lowest version. Support for newer IDEs is added through reflection, never through
+        // compile-time API, so the plugin keeps running on Java 21.
         intellijIdeaCommunity('2025.1.2')
 
         pluginVerifier()
         zipSigner()
-        instrumentationTools()
     }
 }
 
 kotlin {
     jvmToolchain(21)
+
+    compilerOptions {
+        // 2025.1 bundles the Kotlin stdlib 2.1.10 and the plugin uses the bundled one.
+        // Pin the API version to the oldest bundled stdlib so newer stdlib members,
+        // which are absent at runtime on older IDEs, cannot be called.
+        apiVersion = KotlinVersion.KOTLIN_2_1
+    }
 }
 
 intellijPlatform {
@@ -43,7 +56,7 @@ intellijPlatform {
         }
 
         changeNotes = """
-            Major rewrite of the ‘Copy Option Path’ plugin, adding new features and ensuring compatibility with recent IDE versions.<br>
+            Fixed the Settings path in 2026.2 and later, where the Settings window is no longer a modal dialog.<br>
         """
     }
 
@@ -68,8 +81,11 @@ intellijPlatform {
 
     pluginVerification {
         ides {
-            // Verify against the IDE version we build with
-            ide(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdeaCommunity, '2025.1.2')
+            // Verify against the latest release of every branch the plugin claims to support,
+            // which is derived from sinceBuild. Pinned versions are avoided on purpose: they go
+            // stale, and IntelliJ IDEA Community was discontinued after 2025.3, so newer branches
+            // have to come from Ultimate. The verifier picks the right product per branch.
+            recommended()
         }
     }
 
@@ -78,6 +94,21 @@ intellijPlatform {
         // Use environment variable (CI/CD) or fall back to local .signing/publish_token file
         token = providers.environmentVariable("PUBLISH_TOKEN")
                 .orElse(tokenFile.exists() ? providers.provider { tokenFile.text.trim() } : providers.provider { "" })
+    }
+}
+
+// Extra run tasks to check the plugin against newer IDEs than the one it is compiled against.
+// Each one gets its own sandbox, so `runIde` keeps its 2025.1 sandbox untouched.
+intellijPlatformTesting {
+    runIde {
+        register('runIde20261') {
+            type = org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdeaUltimate
+            version = '2026.1.4'
+        }
+        register('runIde20262') {
+            type = org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdeaUltimate
+            version = '2026.2.0.1'
+        }
     }
 }
 
