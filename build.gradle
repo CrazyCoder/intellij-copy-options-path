@@ -7,7 +7,7 @@ plugins {
 }
 
 group = 'io.github.crazycoder.copysettingpath'
-version = '1.4'
+version = '1.5'
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21
@@ -101,12 +101,7 @@ intellijPlatform {
 
         changeNotes = """
             <ul>
-              <li>Fixed the Settings path in 2026.2 and later, where the Settings window is no longer a modal dialog.</li>
-              <li>Fixed values in angle brackets being dropped, such as &lt;default&gt; and &lt;no scheme&gt;.</li>
-              <li>Fixed the last character being cut from a value that ends with a separator character.</li>
-              <li>Fixed the notification highlight being invisible in dark themes.</li>
-              <li>Mouse click interception now applies only where the action works, so Ctrl+Click keeps its usual meaning in the editor and the project view.</li>
-              <li>The notification now rises into place instead of bouncing, and the highlight sweeps across the path leaving a fading trail, so the path is easier to read.</li>
+              <li>The path now names the group a setting belongs to, such as "Sync external changes:" or "When tabs exceed the limit:". A group written as a title above indented checkboxes or radio buttons was missing from the path.</li>
             </ul>
         """
     }
