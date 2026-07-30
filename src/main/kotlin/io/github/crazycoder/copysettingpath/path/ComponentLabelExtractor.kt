@@ -3,6 +3,9 @@
 package io.github.crazycoder.copysettingpath.path
 
 import com.intellij.openapi.options.advanced.AdvancedSettings
+import com.intellij.ui.dsl.gridLayout.Constraints
+import com.intellij.ui.dsl.gridLayout.Grid
+import com.intellij.ui.dsl.gridLayout.GridLayout
 import io.github.crazycoder.copysettingpath.AdvancedSettingIds
 import io.github.crazycoder.copysettingpath.LayoutConstants
 import io.github.crazycoder.copysettingpath.appendItem
@@ -26,6 +29,12 @@ import kotlin.math.min
  * 3. Adjacent value component for labels ending with ":"
  */
 object ComponentLabelExtractor {
+
+    /**
+     * The grid column a row starts in. A cell further right shares its row with other cells,
+     * so it is a value beside a label rather than a member of a vertical group.
+     */
+    private const val FIRST_COLUMN = 0
 
     /**
      * Appends the component label to the path.
@@ -84,18 +93,8 @@ object ComponentLabelExtractor {
      * Checks if the label for a toggle button came from labeledBy or a sibling's group label.
      * This is used to determine if the button's own text should be used as the value.
      */
-    private fun isToggleButtonGroupLabel(component: JToggleButton, label: String): Boolean {
-        // Check if component has labeledBy
-        val labeledBy = component.getClientProperty("labeledBy")
-        if (labeledBy is JLabel) {
-            return true
-        }
-
-        // Check if label came from a sibling's group label (which means it ends with ":")
-        // If findGroupLabelFromSiblings would return this label, then it's a group label
-        val groupLabel = findGroupLabelFromSiblings(component)
-        return groupLabel == label
-    }
+    private fun isToggleButtonGroupLabel(component: JToggleButton, label: String): Boolean =
+        component.getClientProperty("labeledBy") is JLabel || findGroupLabel(component) == label
 
     /**
      * Gets the label for a component using standard patterns.
@@ -121,7 +120,7 @@ object ComponentLabelExtractor {
 
             // For toggle buttons without labeledBy, check if sibling buttons have a shared group label
             if (component is JToggleButton) {
-                val groupLabel = findGroupLabelFromSiblings(component)
+                val groupLabel = findGroupLabel(component)
                 if (groupLabel != null) {
                     return groupLabel
                 }
@@ -170,6 +169,116 @@ object ComponentLabelExtractor {
         }
 
         return null
+    }
+
+    /**
+     * Returns the label of the group a toggle button belongs to, or null when it is not in one.
+     *
+     * A group label is laid out in one of two ways. A horizontal group keeps the label on the row
+     * of the buttons, where it belongs to the first button. A vertical group puts the label on a
+     * row of its own above the buttons, where nothing connects the two.
+     *
+     * @param button The toggle button to find the group label for.
+     * @return The group label text if found, or null.
+     */
+    private fun findGroupLabel(button: JToggleButton): String? =
+        findGroupLabelFromSiblings(button) ?: findButtonsGroupHeader(button)
+
+    /**
+     * Returns the title of the Kotlin UI DSL buttons group the button belongs to.
+     *
+     * `buttonsGroup("Title:")` writes the title into a row of its own and indents the buttons
+     * below it, and leaves no reference between the label and the buttons. Only the layout still
+     * holds the relation: every row of a panel is a cell of one grid, and the indent of a row is
+     * the left gap of that cell. The title is therefore the nearest row above the button that is
+     * indented less than the button is.
+     *
+     * The search is deliberately narrow, because a settings page carries many labels that title
+     * nothing. It gives up unless every row between the button and the candidate is indented
+     * exactly like the button, the candidate row holds a single label and nothing else, and that
+     * label ends with ":". A grid is never left, so a group in one column cannot take the title
+     * of the column beside it, and a page built without the UI DSL has no grid and is left alone.
+     *
+     * @param button The toggle button to find the group title for.
+     * @return The group title if the button sits in a titled buttons group, or null.
+     */
+    @Suppress("UnstableApiUsage") // The grid layout API carries the only link left between the two
+    private fun findButtonsGroupHeader(button: JToggleButton): String? {
+        val panel = button.parent as? JComponent ?: return null
+        val layout = panel.layout as? GridLayout ?: return null
+        val cell = findIndentedCell(layout, button) ?: return null
+        if (cell.x != FIRST_COLUMN) return null
+
+        val rows = collectRows(panel, layout, cell.grid)
+        var y = cell.y - 1
+        while (y >= 0) {
+            val row = rows[y] ?: return null
+            y--
+            // A row hidden by visibleIf keeps its cell, but the user does not see it
+            if (row.none { (_, component) -> component.isVisible }) continue
+            val indent = row.minOf { (constraints, _) -> constraints.gaps.left }
+            // Another row of the same group
+            if (indent == cell.gaps.left) continue
+            if (indent > cell.gaps.left) return null
+            val label = row.singleOrNull()?.second as? JLabel ?: return null
+            return label.text?.removeHtmlTags()?.trim()?.takeIf { it.endsWith(":") }
+        }
+
+        return null
+    }
+
+    /**
+     * Returns the cell that carries the indent of the row the component sits in.
+     *
+     * A row is a sub grid of the panel grid, so the indent is one or two levels above the cell of
+     * the component itself. Reaching the root grid without finding a left gap means the component
+     * is not indented, and an unindented component cannot be below a group title.
+     *
+     * @param layout The grid layout of the panel the component belongs to.
+     * @param component The component to find the indented cell for.
+     * @return The cell that carries the indent, or null if there is none.
+     */
+    @Suppress("UnstableApiUsage")
+    private fun findIndentedCell(layout: GridLayout, component: JComponent): Constraints? {
+        var constraints = layout.getConstraints(component)
+        while (constraints != null) {
+            if (constraints.gaps.left > 0) {
+                return constraints
+            }
+            constraints = layout.getConstraints(constraints.grid)
+        }
+        return null
+    }
+
+    /**
+     * Groups the children of a panel by the row they occupy in the given grid.
+     *
+     * A child of a nested panel belongs to another grid and resolves to no cell in this one, so
+     * it is left out.
+     *
+     * @param panel The panel that owns the layout.
+     * @param layout The grid layout of the panel.
+     * @param grid The grid whose rows are wanted.
+     * @return The cells of the grid, and the components in them, by row.
+     */
+    @Suppress("UnstableApiUsage")
+    private fun collectRows(
+        panel: JComponent,
+        layout: GridLayout,
+        grid: Grid
+    ): Map<Int, List<Pair<Constraints, Component>>> {
+        val rows = mutableMapOf<Int, MutableList<Pair<Constraints, Component>>>()
+        for (child in panel.components) {
+            if (child !is JComponent) continue
+            var constraints = layout.getConstraints(child)
+            while (constraints != null && constraints.grid !== grid) {
+                constraints = layout.getConstraints(constraints.grid)
+            }
+            if (constraints != null) {
+                rows.getOrPut(constraints.y) { mutableListOf() }.add(constraints to child)
+            }
+        }
+        return rows
     }
 
     /**
