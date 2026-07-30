@@ -25,6 +25,25 @@ class PlatformInternalsContractTest {
     private fun load(className: String): Class<*> =
         loadOrNull(className) ?: error("Platform class is gone: $className")
 
+    /**
+     * Names the platform the run is actually testing.
+     *
+     * Without this a failure gives no clue which IDE produced it, and a misconfigured testIde
+     * task that silently falls back to the compile target would look like a passing run.
+     */
+    @Test
+    fun `report the platform under test`() {
+        val home = com.intellij.openapi.application.PathManager.getHomePath()
+        val build = java.io.File(home, "build.txt").takeIf { it.isFile }?.readText()?.trim()
+        // Present since 2026.2, absent before, so it tells the two eras apart at a glance
+        val nonModalSettings = loadOrNull("com.intellij.openapi.options.newEditor.SettingsNonModalDialog") != null
+        println(
+            "Platform under test: build=$build nonModalSettings=$nonModalSettings " +
+                    "java=${System.getProperty("java.version")} home=$home"
+        )
+        assertNotNull("Cannot tell which platform is on the test classpath", build ?: home)
+    }
+
     @Test
     fun `settings classes resolve`() {
         load(PathConstants.SETTINGS_EDITOR_CLASS)

@@ -180,7 +180,9 @@ object ComponentLabelExtractor {
      */
     private fun findAdjacentValue(src: Component): String? {
         val adjacent = findAdjacentComponent(src) ?: return null
-        return extractComponentValue(adjacent)
+        // Values are appended to the path directly rather than through appendItem, so they are
+        // cleaned here. A JTextField or a JCheckBox can hold markup of its own.
+        return extractComponentValue(adjacent)?.removeHtmlTags()
     }
 
     /**

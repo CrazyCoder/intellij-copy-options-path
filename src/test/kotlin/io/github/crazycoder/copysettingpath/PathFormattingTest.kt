@@ -67,6 +67,19 @@ class PathFormattingTest {
         assertEquals("Java | Logger:", path("Java", "Logger:"))
     }
 
+    /**
+     * Advanced Settings appends the setting id straight after the colon, with no space, and it
+     * is stripped from the finished path. A real value is separated from its label by a space,
+     * which is what keeps a dotted value such as a package name intact.
+     */
+    @Test
+    fun `strips a trailing setting id but keeps a dotted value`() {
+        assertEquals("Java | Logger: com.example.app", path("Java", "Logger:", "com.example.app"))
+        assertEquals("Mouse click interception", trimFinalResult(
+            StringBuilder("Mouse click interception:copy.setting.path.mouse.intercept"), pipe
+        ))
+    }
+
     @Test
     fun `strips html markup and collapses whitespace`() {
         assertEquals("Bold label", "<html><b>Bold</b>\n   label</html>".removeHtmlTags())
