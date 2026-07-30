@@ -1,0 +1,75 @@
+name: Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  # Weekly, so a rename in a new IDE build is found before a user reports it
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build
+        run: ./gradlew buildPlugin
+
+      - name: Test against the compile target
+        run: ./gradlew test
+
+  compatibility:
+    name: Test against ${{ matrix.ide }}
+    runs-on: ubuntu-latest
+    # The plugin is compiled against the oldest supported IDE, so nothing but running the
+    # contract test on a newer one can tell us that a platform internal has moved.
+    strategy:
+      fail-fast: false
+      matrix:
+        ide: [ test20261, test20262 ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run the contract test
+        run: ./gradlew ${{ matrix.ide }}
+
+  verify:
+    name: Verify plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run the IntelliJ Plugin Verifier
+        run: ./gradlew verifyPlugin
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-verifier-report
+          path: build/reports/pluginVerifier

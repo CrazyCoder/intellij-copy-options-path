@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
 plugins {
     id 'java'
@@ -32,7 +33,15 @@ dependencies {
 
         pluginVerifier()
         zipSigner()
+        // Kotlin object, so Groovy needs the INSTANCE field
+        testFramework(TestFrameworkType.Platform.INSTANCE)
     }
+
+    testImplementation 'junit:junit:4.13.2'
+}
+
+tasks.named('test') {
+    useJUnit()
 }
 
 kotlin {
@@ -106,6 +115,20 @@ intellijPlatformTesting {
             version = '2026.1.4'
         }
         register('runIde20262') {
+            type = org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdeaUltimate
+            version = '2026.2.0.1'
+        }
+    }
+
+    // Run the test suite against IDEs newer than the compile target. The contract test asserts
+    // that every platform internal the plugin reflects on still resolves, so a rename in a new
+    // IDE shows up as a failing build here instead of as a bug report after release.
+    testIde {
+        register('test20261') {
+            type = org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdeaUltimate
+            version = '2026.1.4'
+        }
+        register('test20262') {
             type = org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdeaUltimate
             version = '2026.2.0.1'
         }

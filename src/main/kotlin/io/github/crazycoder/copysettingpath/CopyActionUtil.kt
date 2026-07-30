@@ -107,6 +107,9 @@ object RegexPatterns {
     /** Pattern to match HTML tags for removal. */
     val HTML_TAGS: Regex = Regex("<[^>]*>")
 
+    /** Line breaks, which separate words and so become a space rather than nothing. */
+    val HTML_LINE_BREAK: Regex = Regex("<br\\s*/?>", RegexOption.IGNORE_CASE)
+
     /**
      * Pattern to match Advanced Settings ID display in HTML labels.
      * In Advanced Settings, the setting ID is shown after a <br> tag, e.g.:
@@ -131,21 +134,41 @@ object RegexPatterns {
 // ============================================================================
 
 /**
+ * Whether the string is HTML as Swing understands it.
+ *
+ * Swing renders a label as HTML only when its text starts with the html tag. Without that
+ * prefix the angle brackets are shown literally, so they belong to the value and must be kept.
+ * Settings are full of such values: `<default>`, `<no scheme>`, `<Project>`, `List<String>`.
+ */
+private fun String.isSwingHtml(): Boolean = trimStart().startsWith("<html", ignoreCase = true)
+
+/**
  * Removes all HTML tags from a string and collapses whitespace.
  *
  * This function:
- * 1. Removes Advanced Settings ID suffixes (shown after <br> in Advanced Settings labels)
- * 2. Removes all HTML tags
- * 3. Collapses multiple whitespace characters (spaces, tabs, newlines) into a single space
- * 4. Trims leading and trailing whitespace
+ * 1. Leaves text that is not Swing HTML alone, so angle brackets in a value survive
+ * 2. Removes Advanced Settings ID suffixes (shown after <br> in Advanced Settings labels)
+ * 3. Turns line breaks into spaces, so the words around them do not run together
+ * 4. Removes all HTML tags
+ * 5. Collapses multiple whitespace characters (spaces, tabs, newlines) into a single space
+ * 6. Trims leading and trailing whitespace
  *
  * Uses cached regex patterns for performance.
  */
-fun String.removeHtmlTags(): String = this
-    .replace(RegexPatterns.HTML_SETTING_ID_SUFFIX, "")
-    .replace(RegexPatterns.HTML_TAGS, "")
-    .replace(RegexPatterns.MULTIPLE_WHITESPACE, " ")
-    .trim()
+fun String.removeHtmlTags(): String {
+    if (!isSwingHtml()) return collapseWhitespace()
+    return this
+        .replace(RegexPatterns.HTML_SETTING_ID_SUFFIX, "")
+        .replace(RegexPatterns.HTML_LINE_BREAK, " ")
+        .replace(RegexPatterns.HTML_TAGS, "")
+        .collapseWhitespace()
+}
+
+/**
+ * Collapses runs of whitespace into a single space and trims the ends.
+ */
+private fun String.collapseWhitespace(): String =
+    replace(RegexPatterns.MULTIPLE_WHITESPACE, " ").trim()
 
 /**
  * Removes Advanced Settings IDs that may be appended to labels.
