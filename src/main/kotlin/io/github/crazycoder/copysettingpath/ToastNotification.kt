@@ -62,8 +62,14 @@ private const val TOAST_CORNER_RADIUS = 12
 /** Corner radius for segment highlight. */
 private const val SEGMENT_CORNER_RADIUS = 8
 
-/** Alpha value for segment highlight color (0-255). */
-private const val HIGHLIGHT_ALPHA = 140
+/**
+ * Alpha of the segment highlight, over the toast background (0-255).
+ *
+ * 70 lands at a contrast ratio of about 1.96 against the notification background in both the
+ * light and the dark theme, which reads as a clear but soft highlight. The value is symmetric
+ * across themes because the highlight is derived from the foreground colour.
+ */
+private const val HIGHLIGHT_ALPHA = 70
 
 // ============================================================================
 // Sound Constants
@@ -215,12 +221,19 @@ private class ToastWindow(text: String, private val separator: String) : javax.s
     private var targetY: Int = 0
     private val normalBackground = com.intellij.util.ui.JBUI.CurrentTheme.NotificationInfo.backgroundColor()
 
-    /** Semi-transparent highlight color derived from theme's border color. */
+    /**
+     * Semi-transparent highlight colour derived from the theme's foreground colour.
+     *
+     * The foreground is the only colour guaranteed to contrast with the background in every
+     * theme, including custom ones. The border colour is not: in Islands Dark the notification
+     * border and background are both #33353B, so a highlight derived from the border blended to
+     * exactly the background and the sweep was invisible.
+     */
     @Suppress("UseJBColor")
     private val highlightColor: java.awt.Color
         get() {
-            val border = com.intellij.util.ui.JBUI.CurrentTheme.NotificationInfo.borderColor()
-            return java.awt.Color(border.red, border.green, border.blue, HIGHLIGHT_ALPHA)
+            val foreground = com.intellij.util.ui.JBUI.CurrentTheme.NotificationInfo.foregroundColor()
+            return java.awt.Color(foreground.red, foreground.green, foreground.blue, HIGHLIGHT_ALPHA)
         }
 
     /**
