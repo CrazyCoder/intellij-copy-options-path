@@ -1,10 +1,8 @@
 package io.github.crazycoder.copysettingpath
 
-import com.intellij.testFramework.ApplicationRule
 import com.intellij.ui.dsl.builder.panel
 import io.github.crazycoder.copysettingpath.path.ComponentLabelExtractor
 import org.junit.Assert.assertEquals
-import org.junit.ClassRule
 import org.junit.Test
 import java.awt.Component
 import java.awt.Container
@@ -20,12 +18,6 @@ import javax.swing.SwingUtilities
  * that titles nothing, and a group that sits next to another column.
  */
 class ButtonsGroupLabelTest {
-
-    companion object {
-        @JvmField
-        @ClassRule
-        val application: ApplicationRule = ApplicationRule()
-    }
 
     /**
      * The label the plugin builds the path from, per button text, for one sample page.
