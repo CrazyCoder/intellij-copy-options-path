@@ -110,4 +110,19 @@ class PlatformInternalsContractTest {
             assertTrue("${configurable.name}.$field is gone", field in fields)
         }
     }
+
+    /**
+     * The mouse interceptor registers itself here. The Disposable overload was deprecated in
+     * 2026.1, so the scope overload is used instead; it exists as far back as 2025.1. If it
+     * ever goes, this fails before a release rather than after one.
+     */
+    @Test
+    fun `IdeEventQueue still takes a dispatcher bound to a scope`() {
+        val overload = com.intellij.ide.IdeEventQueue::class.java.methods.firstOrNull {
+            it.name == "addDispatcher" &&
+                    it.parameterTypes.size == 2 &&
+                    it.parameterTypes[1].name == "kotlinx.coroutines.CoroutineScope"
+        }
+        assertNotNull("IdeEventQueue.addDispatcher(EventDispatcher, CoroutineScope) is gone", overload)
+    }
 }

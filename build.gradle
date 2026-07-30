@@ -1,5 +1,4 @@
 import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
-import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
 plugins {
     id 'java'
@@ -33,8 +32,10 @@ dependencies {
 
         pluginVerifier()
         zipSigner()
-        // Kotlin object, so Groovy needs the INSTANCE field
-        testFramework(TestFrameworkType.Platform.INSTANCE)
+        // Kotlin object, so Groovy needs the INSTANCE field. Named in full because the IntelliJ
+        // Platform plugin is applied without a version from settings.gradle, so the IDE cannot
+        // resolve an import of it even though Gradle can.
+        testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform.INSTANCE)
     }
 
     testImplementation 'junit:junit:4.13.2'
@@ -90,11 +91,19 @@ intellijPlatform {
 
     pluginVerification {
         ides {
-            // Verify against the latest release of every branch the plugin claims to support,
-            // which is derived from sinceBuild. Pinned versions are avoided on purpose: they go
-            // stale, and IntelliJ IDEA Community was discontinued after 2025.3, so newer branches
-            // have to come from Ultimate. The verifier picks the right product per branch.
+            // recommended() only resolves the Community branches, which stop at 2025.3, so on
+            // its own it verified 251 and 252 and nothing newer. That is the wrong half of the
+            // range: 2026.2 is where the plugin broke. The newer branches are named explicitly
+            // and come from Ultimate, the only product still published for them.
             recommended()
+            create {
+                it.type = org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdeaUltimate
+                it.version = '2026.1.4'
+            }
+            create {
+                it.type = org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdeaUltimate
+                it.version = '2026.2.0.1'
+            }
         }
     }
 
