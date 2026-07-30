@@ -24,6 +24,10 @@ Thumbs.db
 
 # Plugin signing credentials (NEVER commit)
 /.signing/
+
+# Local secrets: signing credentials and the Marketplace token (NEVER commit)
+/.env
+!/.env.example
 CLAUDE.md
 /.claude/
 /.serena/

@@ -21,6 +21,33 @@ repositories {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Secrets
+// ---------------------------------------------------------------------------
+
+/**
+ * Reads a secret: the environment first, then a gitignored .env in the project root.
+ *
+ * CI sets real environment variables, a developer machine keeps a .env, and both use the same
+ * names, so nothing about the build differs between them. Reading is lazy and goes through
+ * Gradle's provider API, so the value is only resolved by the task that needs it and the build
+ * stays compatible with the configuration cache.
+ *
+ * Returns a provider with no value when the secret is set in neither place. Tasks that need it
+ * then fail saying so, instead of quietly using an empty string.
+ */
+def dotEnvText = providers.fileContents(layout.projectDirectory.file('.env')).asText
+def secret = { String name ->
+    providers.environmentVariable(name).orElse(dotEnvText.map { text ->
+        text.readLines()
+                .collect { it.trim() }
+                .find { !it.startsWith('#') && it.startsWith(name + '=') }
+                ?.substring(name.length() + 1)
+                ?.trim()
+                ?.replaceAll(/^["']|["']$/, '')
+    })
+}
+
 dependencies {
     intellijPlatform {
         // Build against the lowest supported IDE.
@@ -89,10 +116,10 @@ intellijPlatform {
         def certFile = file("$signingDir/chain.crt")
         def keyFile = file("$signingDir/private.pem")
 
-        // Use environment variables (CI/CD) or fall back to local .signing/ files
-        certificateChain = providers.environmentVariable("CERTIFICATE_CHAIN")
-        privateKey = providers.environmentVariable("PRIVATE_KEY")
-        password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
+        // Environment or .env, then the local .signing/ files below
+        certificateChain = secret('CERTIFICATE_CHAIN')
+        privateKey = secret('PRIVATE_KEY')
+        password = secret('PRIVATE_KEY_PASSWORD')
 
         // File-based fallback for local development
         if (certFile.exists()) {
@@ -122,10 +149,11 @@ intellijPlatform {
     }
 
     publishing {
-        def tokenFile = rootProject.file(".signing/publish_token")
-        // Use environment variable (CI/CD) or fall back to local .signing/publish_token file
-        token = providers.environmentVariable("PUBLISH_TOKEN")
-                .orElse(tokenFile.exists() ? providers.provider { tokenFile.text.trim() } : providers.provider { "" })
+        // Environment or .env, then the legacy .signing/publish_token file.
+        // No empty-string fallback: a missing token should fail the publish, not send "".
+        def tokenFile = rootProject.file('.signing/publish_token')
+        token = secret('PUBLISH_TOKEN')
+                .orElse(providers.provider { tokenFile.exists() ? tokenFile.text.trim() : null })
     }
 }
 
@@ -167,4 +195,35 @@ tasks.named("buildSearchableOptions") {
 // `gradlew signPlugin verifyPluginSignature` work, which is what a release run wants.
 tasks.named('verifyPluginSignature') {
     mustRunAfter(tasks.named('signPlugin'))
+}
+
+/**
+ * Reports which release secrets resolve, and from where, without printing their values.
+ *
+ * Run before a release to check that .env or the environment is wired up, instead of finding
+ * out from a failed publish.
+ */
+tasks.register('checkReleaseSecrets') {
+    group = 'intellij platform'
+    description = 'Reports which signing and publishing secrets are available, without printing them.'
+
+    def names = ['PUBLISH_TOKEN', 'CERTIFICATE_CHAIN', 'PRIVATE_KEY', 'PRIVATE_KEY_PASSWORD']
+    def fromEnv = names.collectEntries { n -> [n, providers.environmentVariable(n).map { 'environment' }.orElse('')] }
+    def resolved = names.collectEntries { n -> [n, secret(n).map { v -> v.trim().isEmpty() ? 'empty' : 'set' }.orElse('not set')] }
+    def hasEnvFile = providers.provider { rootProject.file('.env').exists() }
+    def signingFiles = ['chain.crt', 'private.pem', 'publish_token'].collectEntries { f ->
+        [f, providers.provider { rootProject.file(".signing/$f").exists() }]
+    }
+
+    doLast {
+        println '.env file present: ' + (hasEnvFile.get() ? 'yes' : 'no')
+        names.each { n ->
+            def source = fromEnv[n].get()
+            def status = resolved[n].get()
+            def origin = status == 'not set' ? '' : (source ? 'environment' : '.env')
+            println '  ' + n.padRight(22) + status.padRight(10) + origin
+        }
+        println '.signing/ files:'
+        signingFiles.each { f, present -> println '  ' + f.toString().padRight(22) + (present.get() ? 'present' : 'missing') }
+    }
 }
