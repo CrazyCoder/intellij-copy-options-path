@@ -1,20 +1,18 @@
-@file:Suppress("UNCHECKED_CAST")
-
 package io.github.crazycoder.copysettingpath.path
 
+import com.intellij.ide.DataManager
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.ActionToolbar
 import com.intellij.openapi.actionSystem.Toggleable
 import com.intellij.openapi.actionSystem.impl.ActionButton
-import com.intellij.openapi.options.newEditor.SettingsDialog
+import com.intellij.openapi.options.ex.Settings
 import com.intellij.ui.TitledSeparator
 import com.intellij.ui.tabs.JBTabs
-import com.intellij.openapi.wm.IdeFrame
 import io.github.crazycoder.copysettingpath.*
 import java.awt.Component
 import java.awt.Container
 import java.util.*
 import javax.swing.JComponent
-import javax.swing.JPanel
 import javax.swing.JTabbedPane
 import javax.swing.SwingUtilities
 import javax.swing.border.TitledBorder
@@ -27,10 +25,11 @@ import javax.swing.border.TitledBorder
  * 2. Walk up hierarchy for tabs and titled borders (within ConfigurableEditor boundary)
  * 3. Add TitledSeparator if present
  *
- * The path comes from the SettingsEditor component itself rather than from the dialog.
- * Up to 2026.1 the Settings window is a modal SettingsDialog (a DialogWrapper); since 2026.2
- * it is a non-modal SettingsNonModalDialog, which is not a DialogWrapper. The SettingsEditor
- * is present in the component hierarchy in both, so it works for every supported version.
+ * The Settings window is detected with the public [Settings] data key, and the path comes from
+ * the SettingsEditor component itself rather than from the dialog. Up to 2026.1 the Settings
+ * window is a modal SettingsDialog (a DialogWrapper); since 2026.2 it is a non-modal
+ * SettingsNonModalDialog, which is not a DialogWrapper. Neither the data key nor the
+ * SettingsEditor component depends on that difference.
  */
 object SettingsPathExtractor {
 
@@ -39,31 +38,34 @@ object SettingsPathExtractor {
     /**
      * Checks whether the component belongs to the Settings window.
      *
-     * Used to enable the action and to select the Settings path builder without relying on
+     * Uses the public [Settings] data key, which the Settings UI publishes for its whole window.
+     * That covers the settings pages and the window chrome alike, and does not rely on
      * [com.intellij.openapi.ui.DialogWrapper], which the non-modal Settings window has none of.
      *
      * @param component The component to check.
+     * @param e The action event, whose data context is preferred when available.
      * @return true if the component is inside the Settings window.
      */
-    fun isInSettingsWindow(component: Component): Boolean = findSettingsEditor(component) != null
+    fun isInSettingsWindow(component: Component, e: AnActionEvent? = null): Boolean {
+        e?.let { return it.getData(Settings.KEY) != null }
+        return Settings.KEY.getData(DataManager.getInstance().getDataContext(component)) != null
+    }
 
     /**
      * Finds the SettingsEditor that owns the given component.
      *
      * Normally the SettingsEditor is an ancestor of the component. Components that belong to the
      * window chrome rather than to the settings page (the button panel, for example) are outside
-     * it, so the whole window is searched as a fallback. Settings always has a window of its own,
-     * so the main IDE frame is never scanned. That keeps the cost off the EDT when the action
-     * updates for a component in the editor or a tool window.
+     * it, so the whole window is searched as a fallback. Callers reach this only after
+     * [isInSettingsWindow] has confirmed the context, so the fallback never scans the main frame.
      *
      * @param component The component to start searching from.
      * @return The SettingsEditor component, or null if the component is not in a Settings window.
      */
-    private fun findSettingsEditor(component: Component): Component? {
+    fun findSettingsEditor(component: Component): Component? {
         findParentOfType(component, PathConstants.SETTINGS_EDITOR_CLASS)?.let { return it }
 
         val window = SwingUtilities.getWindowAncestor(component) ?: return null
-        if (window is IdeFrame) return null
         return findAllComponentsOfType<Component>(window)
             .firstOrNull { isClassOrSubclassOf(it.javaClass, PathConstants.SETTINGS_EDITOR_CLASS) }
     }
@@ -74,22 +76,24 @@ object SettingsPathExtractor {
      * @param src The source component.
      * @param path StringBuilder to append path segments to.
      * @param separator The separator to use between path components.
+     * @param settingsEditor The SettingsEditor resolved by the caller, if it already has one.
      */
-    fun appendSettingsPath(src: Component, path: StringBuilder, separator: String) {
-        // 1. Get base path from SettingsEditor via component hierarchy
-        val settingsEditorPath = getPathFromSettingsEditor(src)
+    fun appendSettingsPath(
+        src: Component,
+        path: StringBuilder,
+        separator: String,
+        settingsEditor: Component? = findSettingsEditor(src)
+    ) {
+        // 1. Get base path from SettingsEditor.getPathNames()
+        val settingsEditorPath = settingsEditor?.let { invokeGetPathNames(it) }
         if (!settingsEditorPath.isNullOrEmpty()) {
             path.append(SETTINGS_PREFIX)
             path.append(separator)
             path.append(settingsEditorPath.joinToString(separator))
             path.append(separator)
-        } else {
-            // Fall back to dialog-level extraction
-            val dialog = findSettingsDialog(src)
-            if (dialog != null) {
-                val dialogPath = getPathFromSettingsDialog(dialog, separator)
-                appendItem(path, dialogPath, separator)
-            }
+        } else if (settingsEditor != null) {
+            // In the Settings window but no configurable selected yet
+            appendItem(path, SETTINGS_PREFIX, separator)
         }
 
         // 2. Find ConfigurableEditor boundary
@@ -104,162 +108,6 @@ object SettingsPathExtractor {
                 appendItem(path, separatorComponent.text, separator)
             }
         }
-    }
-
-    /**
-     * Extracts the settings path from the SettingsEditor component hierarchy.
-     *
-     * @param component The source component to start searching from.
-     * @return Collection of path segments, or null if extraction fails.
-     */
-    private fun getPathFromSettingsEditor(component: Component): Collection<String>? {
-        return runCatching {
-            val settingsEditor = findSettingsEditor(component)
-            if (settingsEditor == null) {
-                LOG.debug("SettingsEditor not found in component hierarchy")
-                return@runCatching null
-            }
-
-            LOG.debug("Found SettingsEditor: ${settingsEditor.javaClass.name}")
-            invokeGetPathNames(settingsEditor)
-        }.onFailure { e ->
-            LOG.debug("Error getting path from SettingsEditor: ${e.message}")
-        }.getOrNull()
-    }
-
-    /**
-     * Extracts the settings path from a SettingsDialog instance.
-     *
-     * Note: We use reflection to access the editor to avoid direct references to internal APIs.
-     * The SettingsDialog.getEditor() method returns AbstractEditor which is @ApiStatus.Internal.
-     *
-     * @param settings The SettingsDialog to extract path from.
-     * @param separator The separator to use between path components.
-     * @return The formatted path string, or null if extraction fails.
-     */
-    private fun getPathFromSettingsDialog(settings: SettingsDialog, separator: String): String? {
-        return runCatching {
-            // Use reflection to get the editor to avoid internal API reference
-            // SettingsDialog.getEditor() returns AbstractEditor which is @ApiStatus.Internal
-            val editor =
-                getEditorViaReflection(settings) ?: return@runCatching getPathFromSettingsDialogLegacy(settings, separator)
-            val editorClassName = editor.javaClass.name
-            LOG.debug("Editor class: $editorClassName")
-
-            // getPathNames() only exists on SettingsEditor, not on SingleSettingEditor or AbstractEditor
-            if (!editorClassName.contains("SettingsEditor")) {
-                LOG.debug("Editor is not SettingsEditor, falling back to legacy approach")
-                return@runCatching getPathFromSettingsDialogLegacy(settings, separator)
-            }
-
-            val pathNames = invokeGetPathNames(editor)
-            LOG.debug("pathNames result: $pathNames")
-
-            if (!pathNames.isNullOrEmpty()) {
-                buildPath(pathNames, separator)
-            } else {
-                SETTINGS_PREFIX
-            }
-        }.onFailure { e ->
-            when (e) {
-                is NoSuchMethodException -> LOG.debug("getPathNames method not found: ${e.message}")
-                else -> LOG.debug("Exception when getting path from settings dialog: ${e.message}")
-            }
-        }.getOrNull() ?: getPathFromSettingsDialogLegacy(settings, separator)
-    }
-
-    /**
-     * Builds a path string from the Settings prefix and collection of segments.
-     *
-     * @param segments The path segments to join.
-     * @param separator The separator to use between path components.
-     */
-    private fun buildPath(segments: Collection<String>, separator: String): String {
-        return buildString {
-            append(SETTINGS_PREFIX)
-            append(separator)
-            append(segments.joinToString(separator))
-        }
-    }
-
-    /**
-     * Legacy approach to extract path from SettingsDialog using deep reflection.
-     *
-     * @param settings The SettingsDialog to extract path from.
-     * @param separator The separator to use between path components.
-     */
-    private fun getPathFromSettingsDialogLegacy(settings: SettingsDialog, separator: String): String? {
-        return runCatching {
-            val editorField =
-                findInheritedField(
-                    settings.javaClass,
-                    PathConstants.FIELD_MY_EDITOR,
-                    PathConstants.ABSTRACT_EDITOR_CLASS
-                )
-                    ?: findInheritedField(
-                        settings.javaClass,
-                        PathConstants.FIELD_EDITOR,
-                        PathConstants.ABSTRACT_EDITOR_CLASS
-                    )
-
-            if (editorField == null) {
-                LOG.debug("Could not find editor field in SettingsDialog")
-                return@runCatching null
-            }
-
-            editorField.isAccessible = true
-            val settingsEditorInstance = editorField.get(settings) as? JPanel ?: return@runCatching null
-
-            val bannerField = findInheritedField(
-                settingsEditorInstance.javaClass,
-                PathConstants.FIELD_MY_BANNER,
-                PathConstants.BANNER_CLASS
-            ) ?: findInheritedField(
-                settingsEditorInstance.javaClass,
-                PathConstants.FIELD_MY_BANNER,
-                PathConstants.CONFIGURABLE_EDITOR_BANNER_CLASS
-            )
-
-            if (bannerField == null) {
-                LOG.debug("Could not find banner field in editor")
-                return@runCatching null
-            }
-
-            bannerField.isAccessible = true
-            val bannerInstance = bannerField.get(settingsEditorInstance) ?: return@runCatching null
-
-            val breadcrumbsField = findInheritedField(
-                bannerInstance.javaClass,
-                PathConstants.FIELD_MY_BREADCRUMBS,
-                PathConstants.BREADCRUMBS_CLASS
-            )
-            if (breadcrumbsField == null) {
-                LOG.debug("Could not find myBreadcrumbs field in banner")
-                return@runCatching null
-            }
-
-            breadcrumbsField.isAccessible = true
-            val breadcrumbsInstance = breadcrumbsField.get(bannerInstance) ?: return@runCatching null
-
-            val viewsField = breadcrumbsField.type.getDeclaredField(PathConstants.FIELD_VIEWS)
-            viewsField.isAccessible = true
-            val views = viewsField.get(breadcrumbsInstance) as? ArrayList<*> ?: return@runCatching SETTINGS_PREFIX
-
-            buildString {
-                append(SETTINGS_PREFIX)
-                views.forEachIndexed { _, crumb ->
-                    crumb ?: return@forEachIndexed
-                    val textField = crumb.javaClass.getDeclaredField(PathConstants.FIELD_TEXT)
-                    textField.isAccessible = true
-                    textField.get(crumb)?.let { value ->
-                        append(separator)
-                        append(value)
-                    }
-                }
-            }
-        }.onFailure { e ->
-            LOG.debug("Exception when appending path (legacy): ${e.message}")
-        }.getOrNull()
     }
 
     /**
@@ -290,32 +138,6 @@ object SettingsPathExtractor {
         for (item in items) {
             appendItem(path, item, separator)
         }
-    }
-
-    /**
-     * Finds the SettingsDialog for the given component.
-     */
-    private fun findSettingsDialog(component: Component): SettingsDialog? {
-        return com.intellij.openapi.ui.DialogWrapper.findInstance(component) as? SettingsDialog
-    }
-
-    /**
-     * Gets the editor from a SettingsDialog via reflection.
-     *
-     * This avoids direct reference to the internal AbstractEditor class that is returned
-     * by SettingsDialog.getEditor().
-     *
-     * @param settings The SettingsDialog to get the editor from.
-     * @return The editor as Any, or null if reflection fails.
-     */
-    private fun getEditorViaReflection(settings: SettingsDialog): Any? {
-        return runCatching {
-            // Try the public getter method first (via reflection to avoid type reference)
-            val getEditorMethod = settings.javaClass.getMethod("getEditor")
-            getEditorMethod.invoke(settings)
-        }.onFailure { e ->
-            LOG.debug("Failed to get editor via getEditor() method: ${e.message}")
-        }.getOrNull()
     }
 
     /**

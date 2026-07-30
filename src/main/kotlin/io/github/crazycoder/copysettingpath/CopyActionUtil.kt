@@ -30,11 +30,8 @@ object PathConstants {
 
     // Class names used for reflection (to avoid direct dependencies)
     const val SETTINGS_EDITOR_CLASS = "com.intellij.openapi.options.newEditor.SettingsEditor"
-    const val ABSTRACT_EDITOR_CLASS = "com.intellij.openapi.options.newEditor.AbstractEditor"
     const val CONFIGURABLE_EDITOR_CLASS = "com.intellij.openapi.options.newEditor.ConfigurableEditor"
-    const val BANNER_CLASS = "com.intellij.openapi.options.newEditor.Banner"
-    const val CONFIGURABLE_EDITOR_BANNER_CLASS = "com.intellij.openapi.options.newEditor.ConfigurableEditorBanner"
-    const val BREADCRUMBS_CLASS = "com.intellij.ui.components.breadcrumbs.Breadcrumbs"
+    const val SETTINGS_TREE_VIEW_CLASS = "com.intellij.openapi.options.newEditor.SettingsTreeView"
     const val PROJECT_STRUCTURE_CONFIGURABLE_CLASS =
         "com.intellij.openapi.roots.ui.configuration.ProjectStructureConfigurable"
 
@@ -46,12 +43,6 @@ object PathConstants {
 
     // Field names used for reflection
     const val FIELD_MY_TEXT = "myText"
-    const val FIELD_MY_EDITOR = "myEditor"
-    const val FIELD_EDITOR = "editor"
-    const val FIELD_MY_BANNER = "myBanner"
-    const val FIELD_MY_BREADCRUMBS = "myBreadcrumbs"
-    const val FIELD_VIEWS = "views"
-    const val FIELD_TEXT = "text"
     const val FIELD_MY_HISTORY = "myHistory"
     const val FIELD_MY_SIDE_PANEL = "mySidePanel"
     const val FIELD_MY_MODEL = "myModel"

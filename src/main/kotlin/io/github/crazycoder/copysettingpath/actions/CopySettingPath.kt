@@ -40,7 +40,7 @@ class CopySettingPath : DumbAwareAction() {
         val src = e.getData(PlatformDataKeys.CONTEXT_COMPONENT)
         val hasDialog = src != null && DialogWrapper.findInstance(src) != null
         // The Settings window is not a DialogWrapper since 2026.2, so it needs its own check
-        val hasSettings = src != null && SettingsPathExtractor.isInSettingsWindow(src)
+        val hasSettings = src != null && SettingsPathExtractor.isInSettingsWindow(src, e)
         val hasPopup = src != null && PopupPathExtractor.isInPopupContext(src)
         val hasToolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) != null
         e.presentation.isEnabled = hasDialog || hasSettings || hasPopup || hasToolWindow

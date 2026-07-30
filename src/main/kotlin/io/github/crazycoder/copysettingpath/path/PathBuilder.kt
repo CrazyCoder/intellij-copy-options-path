@@ -2,9 +2,9 @@ package io.github.crazycoder.copysettingpath.path
 
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.options.ex.SingleConfigurableEditor
-import com.intellij.openapi.options.newEditor.SettingsDialog
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.ComponentUtil
+import io.github.crazycoder.copysettingpath.PathConstants
 import io.github.crazycoder.copysettingpath.appendItem
 import io.github.crazycoder.copysettingpath.removeHtmlTags
 import java.awt.Component
@@ -41,7 +41,7 @@ object PathBuilder {
         // 1. Try Settings path (highest priority)
         // Checked before the dialog to cover both the modal Settings dialog (up to 2026.1)
         // and the non-modal Settings window (2026.2+), which is not a DialogWrapper.
-        if (SettingsPathExtractor.isInSettingsWindow(src)) {
+        if (SettingsPathExtractor.isInSettingsWindow(src, e)) {
             return buildSettingsPath(src, e, separator)
         }
 
@@ -72,12 +72,17 @@ object PathBuilder {
      */
     private fun buildSettingsPath(src: Component, e: AnActionEvent?, separator: String): String? {
         val path = StringBuilder()
-        SettingsPathExtractor.appendSettingsPath(src, path, separator)
+        // Resolve the editor once and hand it over, instead of letting the extractor look again
+        val settingsEditor = SettingsPathExtractor.findSettingsEditor(src)
+        SettingsPathExtractor.appendSettingsPath(src, path, separator, settingsEditor)
         return finishPath(src, e, path, separator)
     }
 
     /**
      * Builds the path for a component within a dialog.
+     *
+     * A single-configurable Settings dialog lands here too: it has no SettingsEditor, and its
+     * title already carries the configurable name, so the generic handler covers it.
      */
     private fun buildDialogPath(
         src: Component,
@@ -86,13 +91,7 @@ object PathBuilder {
         separator: String
     ): String? {
         val path = StringBuilder()
-
-        // Build base path based on dialog type
-        when (dialog) {
-            is SettingsDialog -> SettingsPathExtractor.appendSettingsPath(src, path, separator)
-            else -> appendGenericDialogPath(dialog, src, path, separator)
-        }
-
+        appendGenericDialogPath(dialog, src, path, separator)
         return finishPath(src, e, path, separator)
     }
 
@@ -132,7 +131,7 @@ object PathBuilder {
 
         // Check if this tree is inside SettingsTreeView (the main settings tree)
         return runCatching {
-            val settingsTreeViewClass = Class.forName("com.intellij.openapi.options.newEditor.SettingsTreeView")
+            val settingsTreeViewClass = Class.forName(PathConstants.SETTINGS_TREE_VIEW_CLASS)
             ComponentUtil.getParentOfType(settingsTreeViewClass, tree) != null
         }.getOrDefault(false)
     }
