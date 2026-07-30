@@ -127,7 +127,7 @@ object PopupPathExtractor {
         e: AnActionEvent?,
         separator: String
     ): String? {
-        val findPopupPanel = findParentByClassName(src, PathConstants.FIND_POPUP_PANEL_CLASS)
+        val findPopupPanel = findParentByClassNameOrNested(src, PathConstants.FIND_POPUP_PANEL_CLASS)
             ?: return null
 
         val path = StringBuilder()
@@ -156,7 +156,7 @@ object PopupPathExtractor {
         e: AnActionEvent?,
         separator: String
     ): String? {
-        val switcherPanel = findParentByClassName(src, PathConstants.SWITCHER_PANEL_CLASS)
+        val switcherPanel = findParentByAnyClassName(src, PathConstants.SWITCHER_PANEL_CLASSES)
             ?: return null
 
         val path = StringBuilder()
@@ -186,8 +186,8 @@ object PopupPathExtractor {
         separator: String
     ): String? {
         // Check for SearchEverywhereUI or its parent BigPopupUI
-        val searchEverywhereUI = findParentByClassName(src, PathConstants.SEARCH_EVERYWHERE_UI_CLASS)
-            ?: findParentByClassName(src, PathConstants.BIG_POPUP_UI_CLASS)
+        val searchEverywhereUI = findParentByClassNameOrNested(src, PathConstants.SEARCH_EVERYWHERE_UI_CLASS)
+            ?: findParentByClassNameOrNested(src, PathConstants.BIG_POPUP_UI_CLASS)
             ?: return null
 
         val path = StringBuilder()
@@ -302,23 +302,8 @@ object PopupPathExtractor {
     /**
      * Recursively searches for the first JLabel with non-empty text in a container.
      */
-    private fun findFirstLabelText(container: Container): String? {
-        for (component in container.components) {
-            if (component is JLabel) {
-                val text = component.text?.removeHtmlTags()?.trim()
-                if (!text.isNullOrBlank()) {
-                    return text
-                }
-            }
-            if (component is Container) {
-                val found = findFirstLabelText(component)
-                if (found != null) {
-                    return found
-                }
-            }
-        }
-        return null
-    }
+    private fun findFirstLabelText(container: Container): String? =
+        descendants(container).filterIsInstance<JLabel>().firstNotNullOfOrNull { it.visibleText() }
 
     /**
      * Extracts title from popup content by searching for title-like components.

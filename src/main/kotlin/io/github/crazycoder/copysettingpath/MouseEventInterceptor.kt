@@ -53,7 +53,6 @@ class MouseEventInterceptor : Disposable {
 
     companion object {
         private const val COPY_OPTIONS_PATH_ACTION_ID = "CopySettingPath"
-        private const val MOUSE_INTERCEPT_SETTING_ID = "copy.setting.path.mouse.intercept"
         private const val NOTIFICATION_GROUP_ID = "Copy Setting Path"
 
         @JvmStatic
@@ -127,7 +126,7 @@ class MouseEventInterceptor : Disposable {
             ApplicationManager.getApplication().messageBus.connect(this)
                 .subscribe(AdvancedSettingsChangeListener.TOPIC, object : AdvancedSettingsChangeListener {
                     override fun advancedSettingChanged(id: String, oldValue: Any, newValue: Any) {
-                        if (id == MOUSE_INTERCEPT_SETTING_ID && newValue == true) {
+                        if (id == AdvancedSettingIds.MOUSE_INTERCEPT && newValue == true) {
                             checkAndWarnDefaultShortcut()
                         }
                     }
@@ -156,7 +155,7 @@ class MouseEventInterceptor : Disposable {
      */
     private fun updateMouseShortcutAndWarn() {
         updateMouseShortcut()
-        if (AdvancedSettings.getBoolean(MOUSE_INTERCEPT_SETTING_ID)) {
+        if (AdvancedSettings.getBoolean(AdvancedSettingIds.MOUSE_INTERCEPT)) {
             checkAndWarnDefaultShortcut()
         }
     }
@@ -256,7 +255,7 @@ class MouseEventInterceptor : Disposable {
      */
     private fun interceptMouseEvent(event: AWTEvent): Boolean {
         // Check if the feature is enabled in Advanced Settings
-        if (!AdvancedSettings.getBoolean(MOUSE_INTERCEPT_SETTING_ID)) return false
+        if (!AdvancedSettings.getBoolean(AdvancedSettingIds.MOUSE_INTERCEPT)) return false
 
         if (event !is MouseEvent) return false
 

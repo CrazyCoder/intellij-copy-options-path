@@ -31,21 +31,6 @@ import kotlin.math.sin
 // Settings Constants
 // ============================================================================
 
-/** Advanced setting ID for balloon notification configuration. */
-private const val SHOW_BALLOON_SETTING_ID = "copy.setting.path.show.balloon"
-
-/** Advanced setting ID for notification animation configuration. */
-private const val ANIMATE_NOTIFICATION_SETTING_ID = "copy.setting.path.animate.notification"
-
-/** Advanced setting ID for sound notification configuration. */
-private const val PLAY_SOUND_SETTING_ID = "copy.setting.path.play.sound"
-
-/** Advanced setting ID for notification delay configuration. */
-private const val NOTIFICATION_DELAY_SETTING_ID = "copy.setting.path.notification.delay"
-
-/** Advanced setting ID for path separator configuration. */
-private const val PATH_SEPARATOR_SETTING_ID = "copy.setting.path.separator"
-
 /** Default notification delay in seconds. */
 private const val DEFAULT_NOTIFICATION_DELAY_SECONDS = 1F
 
@@ -102,7 +87,7 @@ private const val SOUND_VOLUME_DB = -20f
  */
 @Suppress("UNUSED_PARAMETER")
 fun showCopiedBalloon(copiedPath: String, sourceComponent: Component? = null) {
-    if (!AdvancedSettings.getBoolean(SHOW_BALLOON_SETTING_ID)) return
+    if (!AdvancedSettings.getBoolean(AdvancedSettingIds.SHOW_BALLOON)) return
 
     val mouseLocation = MouseInfo.getPointerInfo()?.location ?: return
 
@@ -121,7 +106,7 @@ private var currentToast: ToastWindow? = null
  * Gets the notification delay in milliseconds from Advanced Settings.
  */
 private fun getNotificationDelayMs(): Long {
-    val delayString = AdvancedSettings.getString(NOTIFICATION_DELAY_SETTING_ID)
+    val delayString = AdvancedSettings.getString(AdvancedSettingIds.NOTIFICATION_DELAY)
     val delaySeconds = delayString.toFloatOrNull() ?: DEFAULT_NOTIFICATION_DELAY_SECONDS
     return (delaySeconds * 1000).toLong().coerceAtLeast(100L)
 }
@@ -130,14 +115,14 @@ private fun getNotificationDelayMs(): Long {
  * Gets the currently configured path separator from Advanced Settings.
  */
 private fun getConfiguredSeparator(): String =
-    AdvancedSettings.getEnum(PATH_SEPARATOR_SETTING_ID, PathSeparator::class.java).separator
+    AdvancedSettings.getEnum(AdvancedSettingIds.SEPARATOR, PathSeparator::class.java).separator
 
 /**
  * Plays a notification sound when a path is copied.
  * Only plays if the sound setting is enabled.
  */
 private fun playNotificationSound() {
-    if (!AdvancedSettings.getBoolean(PLAY_SOUND_SETTING_ID)) return
+    if (!AdvancedSettings.getBoolean(AdvancedSettingIds.PLAY_SOUND)) return
 
     try {
         val soundStream = object {}.javaClass.getResourceAsStream("/sounds/switch.wav") ?: return
@@ -170,7 +155,7 @@ private fun showToast(text: String, screenLocation: Point) {
     currentToast?.dispose()
 
     val separator = getConfiguredSeparator()
-    val animationsEnabled = AdvancedSettings.getBoolean(ANIMATE_NOTIFICATION_SETTING_ID)
+    val animationsEnabled = AdvancedSettings.getBoolean(AdvancedSettingIds.ANIMATE_NOTIFICATION)
     val toast = ToastWindow(text, separator)
     currentToast = toast
 

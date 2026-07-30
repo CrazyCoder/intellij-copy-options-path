@@ -33,14 +33,16 @@ fun findInheritedField(type: Class<*>, name: String, orTypeName: String? = null)
  * This is useful when we need to find a specific IntelliJ component
  * without having a direct dependency on its class.
  *
- * Handles anonymous inner classes (e.g., ConfigurableEditor$1 matches ConfigurableEditor)
- * by checking both exact name match and superclass hierarchy.
+ * Matches nested classes too, so `ConfigurableEditor$1` matches `ConfigurableEditor`. That is
+ * what callers looking for "am I inside this component's implementation" want. Callers that
+ * need the class itself, to read its members, must use [findParentOfType] instead: a nested
+ * class is declared inside the target but does not extend it, so it has none of its members.
  *
  * @param component The component to start searching from.
  * @param className The fully qualified class name to find.
  * @return The parent component with the matching class name, or null if not found.
  */
-fun findParentByClassName(component: java.awt.Component, className: String): java.awt.Component? {
+fun findParentByClassNameOrNested(component: java.awt.Component, className: String): java.awt.Component? {
     var current: java.awt.Component? = component
     while (current != null) {
         if (matchesClassName(current.javaClass, className)) {
@@ -52,9 +54,22 @@ fun findParentByClassName(component: java.awt.Component, className: String): jav
 }
 
 /**
+ * Finds a parent component matching any of the given class names.
+ *
+ * Use when a platform class has been renamed or moved between the supported IDE versions and
+ * the plugin has to recognise every name.
+ *
+ * @param component The component to start searching from.
+ * @param classNames The fully qualified class names to find.
+ * @return The parent component matching one of the names, or null if not found.
+ */
+fun findParentByAnyClassName(component: java.awt.Component, classNames: List<String>): java.awt.Component? =
+    classNames.firstNotNullOfOrNull { findParentByClassNameOrNested(component, it) }
+
+/**
  * Finds a parent component whose class is, or extends, the class with the given name.
  *
- * Unlike [findParentByClassName], this does not match anonymous inner classes of the target.
+ * Unlike [findParentByClassNameOrNested], this does not match nested classes of the target.
  * An inner class such as `SettingsEditor$7` is declared inside `SettingsEditor` but does not
  * extend it, so it has none of its members. Matching it makes reflective member lookups fail.
  *

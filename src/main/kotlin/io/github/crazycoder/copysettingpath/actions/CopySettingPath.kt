@@ -7,6 +7,7 @@ import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.options.advanced.AdvancedSettings
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.util.ui.TextTransferable
+import io.github.crazycoder.copysettingpath.AdvancedSettingIds
 import io.github.crazycoder.copysettingpath.LOG
 import io.github.crazycoder.copysettingpath.PathSeparator
 import io.github.crazycoder.copysettingpath.path.PathBuilder
@@ -53,13 +54,10 @@ class CopySettingPath : DumbAwareAction() {
 
     @Suppress("CompanionObjectInExtension")
     companion object {
-        /** Advanced setting ID for path separator configuration. */
-        private const val PATH_SEPARATOR_SETTING_ID = "copy.setting.path.separator"
-
         /**
          * Returns the currently configured path separator from Advanced Settings.
          */
         fun getPathSeparator(): String =
-            AdvancedSettings.getEnum(PATH_SEPARATOR_SETTING_ID, PathSeparator::class.java).separator
+            AdvancedSettings.getEnum(AdvancedSettingIds.SEPARATOR, PathSeparator::class.java).separator
     }
 }

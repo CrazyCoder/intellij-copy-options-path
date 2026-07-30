@@ -2,12 +2,10 @@ package io.github.crazycoder.copysettingpath.path
 
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.ui.treeStructure.treetable.TreeTable
 import io.github.crazycoder.copysettingpath.*
 import java.awt.Component
-import java.awt.Container
 import javax.swing.*
 import javax.swing.tree.DefaultMutableTreeNode
 
@@ -322,9 +320,7 @@ object TreeTablePathExtractor {
      * rendered as separate labels before the actual item name.
      */
     private fun extractTextFromRenderedComponent(component: Component): String? {
-        val texts = mutableListOf<String>()
-        collectTextFromComponent(component, texts)
-
+        val texts = component.selfAndDescendants().mapNotNull { it.visibleText() }.toList()
         if (texts.isEmpty()) return null
 
         // Return the most meaningful text (longest non-mnemonic string)
@@ -333,33 +329,6 @@ object TreeTablePathExtractor {
             .filter { !isMnemonicText(it) }
             .maxByOrNull { it.length }
             ?: texts.firstOrNull()
-    }
-
-    /**
-     * Recursively collects all text segments from a component hierarchy.
-     */
-    private fun collectTextFromComponent(component: Component, texts: MutableList<String>) {
-        when (component) {
-            is JLabel -> {
-                component.text?.removeHtmlTags()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
-            }
-
-            is AbstractButton -> {
-                component.text?.removeHtmlTags()?.takeIf { it.isNotBlank() }?.let { texts.add(it) }
-            }
-
-            is SimpleColoredComponent -> {
-                runCatching {
-                    component.getCharSequence(false).toString().takeIf { it.isNotBlank() }
-                }.getOrNull()?.let { texts.add(it) }
-            }
-
-            is Container -> {
-                for (child in component.components) {
-                    collectTextFromComponent(child, texts)
-                }
-            }
-        }
     }
 
     /**

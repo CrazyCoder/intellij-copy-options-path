@@ -8,12 +8,13 @@ import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.ComponentUtil
 import io.github.crazycoder.copysettingpath.PathConstants
 import io.github.crazycoder.copysettingpath.appendItem
-import io.github.crazycoder.copysettingpath.removeHtmlTags
+import io.github.crazycoder.copysettingpath.descendants
+import io.github.crazycoder.copysettingpath.visibleText
 import java.awt.Component
 import java.awt.Container
-import javax.swing.JLabel
 import javax.swing.JTree
 import javax.swing.SwingUtilities
+import javax.swing.JLabel
 
 /**
  * Main orchestration class for building setting paths.
@@ -239,49 +240,20 @@ object PathBuilder {
      * Finds a label inside a component that has "Header" in its class name.
      * This handles dialogs like Find in Files that use custom header panels.
      */
-    private fun findLabelInHeaderComponent(container: Container, maxDepth: Int): String? {
-        if (maxDepth <= 0) return null
-
-        for (component in container.components) {
-            // Check if this component is a header
-            if (component.javaClass.name.contains("Header", ignoreCase = true) && component is Container) {
-                // Find the first label in the header
-                val label = findFirstLabelInContainer(component)
-                if (!label.isNullOrBlank()) {
-                    return label
-                }
-            }
-            // Recurse into children
-            if (component is Container) {
-                val found = findLabelInHeaderComponent(component, maxDepth - 1)
-                if (found != null) {
-                    return found
-                }
-            }
-        }
-        return null
-    }
+    private fun findLabelInHeaderComponent(container: Container, maxDepth: Int): String? =
+        descendants(container, maxDepth)
+            .filterIsInstance<Container>()
+            .filter { it.javaClass.name.contains("Header", ignoreCase = true) }
+            .firstNotNullOfOrNull { findFirstLabelInContainer(it) }
 
     /**
      * Finds the first non-empty label in a container (shallow search).
      */
-    private fun findFirstLabelInContainer(container: Container): String? {
-        for (component in container.components) {
-            if (component is JLabel) {
-                val text = component.text?.removeHtmlTags()?.trim()
-                if (!text.isNullOrBlank() && !text.endsWith(":")) {
-                    return text
-                }
-            }
-            if (component is Container) {
-                val found = findFirstLabelInContainer(component)
-                if (found != null) {
-                    return found
-                }
-            }
-        }
-        return null
-    }
+    private fun findFirstLabelInContainer(container: Container): String? =
+        descendants(container)
+            .filterIsInstance<JLabel>()
+            .mapNotNull { it.visibleText() }
+            .firstOrNull { !it.endsWith(":") }
 
     /**
      * Appends tree/table/list path information if the source component is applicable.

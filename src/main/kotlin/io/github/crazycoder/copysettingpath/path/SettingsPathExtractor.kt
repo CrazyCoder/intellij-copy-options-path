@@ -104,7 +104,7 @@ object SettingsPathExtractor {
         }
 
         // 2. Find ConfigurableEditor boundary
-        val configurableEditor = findParentByClassName(src, PathConstants.CONFIGURABLE_EDITOR_CLASS)
+        val configurableEditor = findParentByClassNameOrNested(src, PathConstants.CONFIGURABLE_EDITOR_CLASS)
 
         // 3. Collect middle path (tabs, titled borders) within ConfigurableEditor
         appendMiddlePath(src, configurableEditor, path, separator)

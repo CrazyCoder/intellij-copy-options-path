@@ -2,7 +2,6 @@ package io.github.crazycoder.copysettingpath
 
 import com.intellij.openapi.diagnostic.Logger
 import java.awt.Component
-import java.awt.Container
 
 /**
  * Core utilities and constants for the Copy Setting Path plugin.
@@ -17,6 +16,22 @@ import java.awt.Container
 
 /** Logger instance for the Copy Setting Path plugin. */
 val LOG: Logger = Logger.getInstance("#io.github.crazycoder.copysettingpath")
+
+/**
+ * Ids of the advanced settings this plugin declares.
+ *
+ * They must match the `advancedSetting` ids in plugin.xml. Keeping them together makes that
+ * comparison a single glance, instead of hunting through the files that read them.
+ */
+object AdvancedSettingIds {
+    const val MOUSE_INTERCEPT = "copy.setting.path.mouse.intercept"
+    const val INCLUDE_ADJACENT_VALUE = "copy.setting.path.include.adjacent.value"
+    const val SHOW_BALLOON = "copy.setting.path.show.balloon"
+    const val ANIMATE_NOTIFICATION = "copy.setting.path.animate.notification"
+    const val PLAY_SOUND = "copy.setting.path.play.sound"
+    const val NOTIFICATION_DELAY = "copy.setting.path.notification.delay"
+    const val SEPARATOR = "copy.setting.path.separator"
+}
 
 /**
  * Constants used throughout the plugin for path construction and reflection.
@@ -37,9 +52,21 @@ object PathConstants {
 
     // Popup class names (for JBPopup-based floating dialogs)
     const val FIND_POPUP_PANEL_CLASS = "com.intellij.find.impl.FindPopupPanel"
-    const val SWITCHER_PANEL_CLASS = "com.intellij.platform.recentFiles.frontend.Switcher\$SwitcherPanel"
     const val SEARCH_EVERYWHERE_UI_CLASS = "com.intellij.ide.actions.searcheverywhere.SearchEverywhereUI"
     const val BIG_POPUP_UI_CLASS = "com.intellij.ide.actions.BigPopupUI"
+
+    /**
+     * Names the Switcher panel has had.
+     *
+     * It moved from `com.intellij.ide.actions` to the recent-files frontend module. Listing
+     * every known name keeps one build working across the branches that disagree, so a move
+     * costs a list entry instead of a release that breaks the other branch. Apply the same
+     * pattern to any other class that turns out to move.
+     */
+    val SWITCHER_PANEL_CLASSES = listOf(
+        "com.intellij.platform.recentFiles.frontend.Switcher\$SwitcherPanel",
+        "com.intellij.ide.actions.Switcher\$SwitcherPanel",
+    )
 
     // Field names used for reflection
     const val FIELD_MY_TEXT = "myText"
@@ -207,24 +234,3 @@ fun trimFinalResult(path: StringBuilder, separator: String = PathConstants.SEPAR
  */
 fun getAbsoluteY(component: Component): Int =
     runCatching { component.locationOnScreen.y }.getOrDefault(component.y)
-
-/**
- * Finds all components of a specific type within a container recursively.
- *
- * @param container The container to search in.
- * @return A sequence of all components of the specified type.
- */
-inline fun <reified T : Component> findAllComponentsOfType(container: Container): Sequence<T> = sequence {
-    val stack = ArrayDeque<Component>()
-    stack.addAll(container.components)
-
-    while (stack.isNotEmpty()) {
-        val component = stack.removeFirst()
-        if (component is T) {
-            yield(component)
-        }
-        if (component is Container) {
-            stack.addAll(component.components)
-        }
-    }
-}

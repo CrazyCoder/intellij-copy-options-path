@@ -3,10 +3,13 @@
 package io.github.crazycoder.copysettingpath.path
 
 import com.intellij.openapi.options.advanced.AdvancedSettings
-import com.intellij.ui.SimpleColoredComponent
+import io.github.crazycoder.copysettingpath.AdvancedSettingIds
 import io.github.crazycoder.copysettingpath.LayoutConstants
 import io.github.crazycoder.copysettingpath.appendItem
+import io.github.crazycoder.copysettingpath.descendants
 import io.github.crazycoder.copysettingpath.removeHtmlTags
+import io.github.crazycoder.copysettingpath.selfAndDescendants
+import io.github.crazycoder.copysettingpath.visibleText
 import java.awt.Component
 import java.awt.Container
 import java.awt.Rectangle
@@ -23,9 +26,6 @@ import kotlin.math.min
  * 3. Adjacent value component for labels ending with ":"
  */
 object ComponentLabelExtractor {
-
-    /** Advanced setting ID for including adjacent value after colon labels. */
-    private const val INCLUDE_ADJACENT_VALUE_SETTING_ID = "copy.setting.path.include.adjacent.value"
 
     /**
      * Appends the component label to the path.
@@ -187,7 +187,7 @@ object ComponentLabelExtractor {
      * Returns whether adjacent value should be included for labels ending with colon.
      */
     private fun isAdjacentValueIncluded(): Boolean =
-        AdvancedSettings.getBoolean(INCLUDE_ADJACENT_VALUE_SETTING_ID)
+        AdvancedSettings.getBoolean(AdvancedSettingIds.INCLUDE_ADJACENT_VALUE)
 
     // ========================================================================
     // Adjacent Component Detection (simplified from AdjacentComponentUtils)
@@ -259,21 +259,16 @@ object ComponentLabelExtractor {
 
     /**
      * Recursively searches a container for a value component.
+     *
+     * Hidden subtrees are skipped rather than searched, so a value component that the user
+     * cannot see is never picked up.
      */
     private fun findValueComponentIn(container: Component): Component? {
         if (isValueComponent(container)) return container
-
-        if (container is Container) {
-            for (child in container.components) {
-                if (!child.isVisible) continue
-                if (isValueComponent(child)) return child
-                if (child is Container) {
-                    val found = findValueComponentIn(child)
-                    if (found != null) return found
-                }
-            }
-        }
-        return null
+        if (container !is Container) return null
+        return descendants(container, descendInto = { it.isVisible })
+            .filter { it.isVisible }
+            .firstOrNull { isValueComponent(it) }
     }
 
     /**
@@ -351,7 +346,7 @@ object ComponentLabelExtractor {
                     false
                 )
 
-                val text = extractComboBoxRenderedText(renderedComponent)
+                val text = renderedComponent.selfAndDescendants().firstNotNullOfOrNull { it.visibleText() }
                 if (!text.isNullOrBlank()) {
                     return text
                 }
@@ -359,31 +354,6 @@ object ComponentLabelExtractor {
         }
 
         return selectedItem.toString()
-    }
-
-    /**
-     * Extracts text from a rendered combo box component.
-     */
-    private fun extractComboBoxRenderedText(component: Component): String? {
-        return when (component) {
-            is JLabel -> component.text?.takeIf { it.isNotBlank() }
-            is AbstractButton -> component.text?.takeIf { it.isNotBlank() }
-            is SimpleColoredComponent -> {
-                runCatching {
-                    component.getCharSequence(false).toString().takeIf { it.isNotBlank() }
-                }.getOrNull()
-            }
-
-            is Container -> {
-                for (child in component.components) {
-                    val text = extractComboBoxRenderedText(child)
-                    if (!text.isNullOrBlank()) return text
-                }
-                null
-            }
-
-            else -> null
-        }
     }
 
     /**

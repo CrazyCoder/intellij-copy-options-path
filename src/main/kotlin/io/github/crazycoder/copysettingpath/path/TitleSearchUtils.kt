@@ -2,7 +2,9 @@ package io.github.crazycoder.copysettingpath.path
 
 import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.SimpleTextAttributes
+import io.github.crazycoder.copysettingpath.descendants
 import io.github.crazycoder.copysettingpath.removeHtmlTags
+import io.github.crazycoder.copysettingpath.visibleText
 import java.awt.Container
 import javax.swing.JLabel
 
@@ -17,6 +19,15 @@ import javax.swing.JLabel
  */
 object TitleSearchUtils {
 
+    /** Longest text still plausible as a title rather than a sentence. */
+    private const val MAX_TITLE_LENGTH = 50
+
+    /** Shortest text still plausible as a title rather than a mnemonic or an icon caption. */
+    private const val MIN_TITLE_LENGTH = 3
+
+    /** Shortcut hints look like titles but are not. */
+    private val SHORTCUT_HINTS = listOf("Ctrl+", "Cmd+", "Alt+")
+
     /**
      * Searches for a JLabel with bold font.
      *
@@ -24,28 +35,11 @@ object TitleSearchUtils {
      * @param maxDepth Maximum depth to search into nested containers.
      * @return The bold label's text, or null if not found.
      */
-    fun findBoldLabelText(container: Container, maxDepth: Int): String? {
-        if (maxDepth <= 0) return null
-
-        for (component in container.components) {
-            if (component is JLabel) {
-                val font = component.font
-                if (font != null && font.isBold) {
-                    val text = component.text?.removeHtmlTags()?.trim()
-                    if (!text.isNullOrBlank()) {
-                        return text
-                    }
-                }
-            }
-            if (component is Container) {
-                val found = findBoldLabelText(component, maxDepth - 1)
-                if (found != null) {
-                    return found
-                }
-            }
-        }
-        return null
-    }
+    fun findBoldLabelText(container: Container, maxDepth: Int): String? =
+        descendants(container, maxDepth)
+            .filterIsInstance<JLabel>()
+            .filter { it.font?.isBold == true }
+            .firstNotNullOfOrNull { it.visibleText() }
 
     /**
      * Searches for a SimpleColoredComponent with BOLD text attributes.
@@ -55,25 +49,10 @@ object TitleSearchUtils {
      * @param maxDepth Maximum depth to search into nested containers.
      * @return The bold text, or null if not found.
      */
-    fun findBoldSimpleColoredText(container: Container, maxDepth: Int): String? {
-        if (maxDepth <= 0) return null
-
-        for (component in container.components) {
-            if (component is SimpleColoredComponent) {
-                val boldText = extractBoldText(component)
-                if (!boldText.isNullOrBlank()) {
-                    return boldText
-                }
-            }
-            if (component is Container) {
-                val found = findBoldSimpleColoredText(component, maxDepth - 1)
-                if (found != null) {
-                    return found
-                }
-            }
-        }
-        return null
-    }
+    fun findBoldSimpleColoredText(container: Container, maxDepth: Int): String? =
+        descendants(container, maxDepth)
+            .filterIsInstance<SimpleColoredComponent>()
+            .firstNotNullOfOrNull { extractBoldText(it) }
 
     /**
      * Finds a label that looks like a title (short text, doesn't end with ":").
@@ -83,32 +62,19 @@ object TitleSearchUtils {
      * @param maxDepth Maximum depth to search into nested containers.
      * @return The title-like label text, or null if not found.
      */
-    fun findTitleLikeLabel(container: Container, maxDepth: Int): String? {
-        if (maxDepth <= 0) return null
+    fun findTitleLikeLabel(container: Container, maxDepth: Int): String? =
+        descendants(container, maxDepth)
+            .filterIsInstance<JLabel>()
+            .mapNotNull { it.visibleText() }
+            .firstOrNull { it.looksLikeTitle() }
 
-        for (component in container.components) {
-            if (component is JLabel) {
-                val text = component.text?.removeHtmlTags()?.trim()
-                // Title-like: not empty, doesn't end with ":", reasonably short, not a shortcut hint
-                if (!text.isNullOrBlank() &&
-                    !text.endsWith(":") &&
-                    text.length in 3..50 &&
-                    !text.contains("Ctrl+") &&
-                    !text.contains("Cmd+") &&
-                    !text.contains("Alt+")
-                ) {
-                    return text
-                }
-            }
-            if (component is Container) {
-                val found = findTitleLikeLabel(component, maxDepth - 1)
-                if (found != null) {
-                    return found
-                }
-            }
-        }
-        return null
-    }
+    /**
+     * Title-like: reasonably short, not a field label, not a shortcut hint.
+     */
+    private fun String.looksLikeTitle(): Boolean =
+        !endsWith(":") &&
+                length in MIN_TITLE_LENGTH..MAX_TITLE_LENGTH &&
+                SHORTCUT_HINTS.none { contains(it) }
 
     /**
      * Extracts bold text from a SimpleColoredComponent.
