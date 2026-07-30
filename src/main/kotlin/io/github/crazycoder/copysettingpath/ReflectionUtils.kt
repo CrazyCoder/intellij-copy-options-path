@@ -1,6 +1,7 @@
 package io.github.crazycoder.copysettingpath
 
 import java.lang.reflect.Field
+import java.lang.reflect.Method
 
 /**
  * Utility functions for reflection-based operations.
@@ -51,6 +52,36 @@ fun findParentByClassName(component: java.awt.Component, className: String): jav
 }
 
 /**
+ * Finds a parent component whose class is, or extends, the class with the given name.
+ *
+ * Unlike [findParentByClassName], this does not match anonymous inner classes of the target.
+ * An inner class such as `SettingsEditor$7` is declared inside `SettingsEditor` but does not
+ * extend it, so it has none of its members. Matching it makes reflective member lookups fail.
+ *
+ * The comparison walks the superclass chain by name, so no class needs to be loaded.
+ *
+ * @param component The component to start searching from.
+ * @param className The fully qualified class name to find.
+ * @return The parent component of that type, or null if not found.
+ */
+fun findParentOfType(component: java.awt.Component, className: String): java.awt.Component? {
+    var current: java.awt.Component? = component
+    while (current != null) {
+        if (isClassOrSubclassOf(current.javaClass, className)) {
+            return current
+        }
+        current = current.parent
+    }
+    return null
+}
+
+/**
+ * Checks if [clazz] is the class named [className] or extends it.
+ */
+fun isClassOrSubclassOf(clazz: Class<*>, className: String): Boolean =
+    generateSequence(clazz) { it.superclass }.any { it.name == className }
+
+/**
  * Checks if a class matches the target class name.
  * Handles exact matches, anonymous inner classes, and inheritance.
  */
@@ -86,13 +117,30 @@ fun matchesClassName(clazz: Class<*>, targetClassName: String): Boolean {
 @Suppress("UNCHECKED_CAST")
 fun invokeGetPathNames(target: Any): Collection<String>? {
     return runCatching {
-        val method = target.javaClass.getDeclaredMethod(PathConstants.METHOD_GET_PATH_NAMES)
+        val method = findDeclaredMethod(target.javaClass, PathConstants.METHOD_GET_PATH_NAMES)
+            ?: throw NoSuchMethodException(PathConstants.METHOD_GET_PATH_NAMES)
         method.isAccessible = true
         method.invoke(target) as? Collection<String>
     }.onFailure { e ->
         LOG.debug("Failed to invoke getPathNames: ${e.message}")
     }.getOrNull()
 }
+
+/**
+ * Finds a declared method by name anywhere in a class hierarchy.
+ *
+ * `getMethod` is not enough here: the platform methods we call are not public
+ * (`SettingsEditor.getPathNames()` is package-private), and `getDeclaredMethod` alone
+ * misses methods declared by a superclass.
+ *
+ * @param type The class to start searching from.
+ * @param name The method name to search for.
+ * @return The found no-argument method, or null if not found.
+ */
+fun findDeclaredMethod(type: Class<*>, name: String): Method? =
+    generateSequence(type) { it.superclass }
+        .takeWhile { it != Any::class.java }
+        .firstNotNullOfOrNull { runCatching { it.getDeclaredMethod(name) }.getOrNull() }
 
 /**
  * Extracts the myText field value from an object via reflection.

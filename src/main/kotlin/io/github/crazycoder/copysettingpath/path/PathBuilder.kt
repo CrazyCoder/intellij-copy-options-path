@@ -38,26 +38,42 @@ object PathBuilder {
      * @return The built path string, or null if path cannot be determined.
      */
     fun buildPath(src: Component, e: AnActionEvent?, separator: String): String? {
-        // 1. Try dialog-based path (highest priority)
+        // 1. Try Settings path (highest priority)
+        // Checked before the dialog to cover both the modal Settings dialog (up to 2026.1)
+        // and the non-modal Settings window (2026.2+), which is not a DialogWrapper.
+        if (SettingsPathExtractor.isInSettingsWindow(src)) {
+            return buildSettingsPath(src, e, separator)
+        }
+
+        // 2. Try dialog-based path
         val dialog = DialogWrapper.findInstance(src)
         if (dialog != null) {
             return buildDialogPath(src, e, dialog, separator)
         }
 
-        // 2. Try popup path (JBPopup-based floating dialogs)
+        // 3. Try popup path (JBPopup-based floating dialogs)
         val popupPath = PopupPathExtractor.buildPath(src, e, separator)
         if (popupPath != null) {
             return popupPath
         }
 
-        // 3. Try tool window path
+        // 4. Try tool window path
         val toolWindowPath = ToolWindowPathExtractor.buildPath(src, e, separator)
         if (toolWindowPath != null) {
             return toolWindowPath
         }
 
-        // 4. No context found
+        // 5. No context found
         return null
+    }
+
+    /**
+     * Builds the path for a component inside the Settings window.
+     */
+    private fun buildSettingsPath(src: Component, e: AnActionEvent?, separator: String): String? {
+        val path = StringBuilder()
+        SettingsPathExtractor.appendSettingsPath(src, path, separator)
+        return finishPath(src, e, path, separator)
     }
 
     /**
@@ -77,6 +93,19 @@ object PathBuilder {
             else -> appendGenericDialogPath(dialog, src, path, separator)
         }
 
+        return finishPath(src, e, path, separator)
+    }
+
+    /**
+     * Adds the parts that are common to every context: the tree, table or list path,
+     * then the label of the source component itself.
+     */
+    private fun finishPath(
+        src: Component,
+        e: AnActionEvent?,
+        path: StringBuilder,
+        separator: String
+    ): String? {
         // Add tree/table/list path if applicable
         // Skip only for the main Settings tree (inside SettingsTreeView) - getPathNames() already includes it
         // But include for secondary trees within settings pages (like color scheme tree)

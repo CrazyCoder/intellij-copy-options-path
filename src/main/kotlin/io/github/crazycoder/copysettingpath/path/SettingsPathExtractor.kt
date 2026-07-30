@@ -8,6 +8,7 @@ import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.openapi.options.newEditor.SettingsDialog
 import com.intellij.ui.TitledSeparator
 import com.intellij.ui.tabs.JBTabs
+import com.intellij.openapi.wm.IdeFrame
 import io.github.crazycoder.copysettingpath.*
 import java.awt.Component
 import java.awt.Container
@@ -15,6 +16,7 @@ import java.util.*
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTabbedPane
+import javax.swing.SwingUtilities
 import javax.swing.border.TitledBorder
 
 /**
@@ -24,10 +26,47 @@ import javax.swing.border.TitledBorder
  * 1. Get base path from SettingsEditor.getPathNames()
  * 2. Walk up hierarchy for tabs and titled borders (within ConfigurableEditor boundary)
  * 3. Add TitledSeparator if present
+ *
+ * The path comes from the SettingsEditor component itself rather than from the dialog.
+ * Up to 2026.1 the Settings window is a modal SettingsDialog (a DialogWrapper); since 2026.2
+ * it is a non-modal SettingsNonModalDialog, which is not a DialogWrapper. The SettingsEditor
+ * is present in the component hierarchy in both, so it works for every supported version.
  */
 object SettingsPathExtractor {
 
     private const val SETTINGS_PREFIX = "Settings"
+
+    /**
+     * Checks whether the component belongs to the Settings window.
+     *
+     * Used to enable the action and to select the Settings path builder without relying on
+     * [com.intellij.openapi.ui.DialogWrapper], which the non-modal Settings window has none of.
+     *
+     * @param component The component to check.
+     * @return true if the component is inside the Settings window.
+     */
+    fun isInSettingsWindow(component: Component): Boolean = findSettingsEditor(component) != null
+
+    /**
+     * Finds the SettingsEditor that owns the given component.
+     *
+     * Normally the SettingsEditor is an ancestor of the component. Components that belong to the
+     * window chrome rather than to the settings page (the button panel, for example) are outside
+     * it, so the whole window is searched as a fallback. Settings always has a window of its own,
+     * so the main IDE frame is never scanned. That keeps the cost off the EDT when the action
+     * updates for a component in the editor or a tool window.
+     *
+     * @param component The component to start searching from.
+     * @return The SettingsEditor component, or null if the component is not in a Settings window.
+     */
+    private fun findSettingsEditor(component: Component): Component? {
+        findParentOfType(component, PathConstants.SETTINGS_EDITOR_CLASS)?.let { return it }
+
+        val window = SwingUtilities.getWindowAncestor(component) ?: return null
+        if (window is IdeFrame) return null
+        return findAllComponentsOfType<Component>(window)
+            .firstOrNull { isClassOrSubclassOf(it.javaClass, PathConstants.SETTINGS_EDITOR_CLASS) }
+    }
 
     /**
      * Appends the Settings dialog path to the path builder.
@@ -75,7 +114,7 @@ object SettingsPathExtractor {
      */
     private fun getPathFromSettingsEditor(component: Component): Collection<String>? {
         return runCatching {
-            val settingsEditor = findParentByClassName(component, PathConstants.SETTINGS_EDITOR_CLASS)
+            val settingsEditor = findSettingsEditor(component)
             if (settingsEditor == null) {
                 LOG.debug("SettingsEditor not found in component hierarchy")
                 return@runCatching null
