@@ -161,3 +161,10 @@ intellijPlatformTesting {
 tasks.named("buildSearchableOptions") {
     enabled = false
 }
+
+// verifyPluginSignature reads signPlugin's output but the plugin does not declare that
+// dependency, so asking for both in one build fails Gradle's validation. Ordering them makes
+// `gradlew signPlugin verifyPluginSignature` work, which is what a release run wants.
+tasks.named('verifyPluginSignature') {
+    mustRunAfter(tasks.named('signPlugin'))
+}
