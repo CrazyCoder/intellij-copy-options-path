@@ -7,7 +7,7 @@ plugins {
 }
 
 group = 'io.github.crazycoder.copysettingpath'
-version = '1.5'
+version = '1.6'
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21
@@ -107,8 +107,7 @@ intellijPlatform {
 
         changeNotes = """
             <ul>
-              <li>The path now names the group a setting belongs to, such as "Sync external changes:" or "When tabs exceed the limit:". A group written as a title above indented checkboxes or radio buttons was missing from the path.</li>
-              <li>Rider: the path to an inspection under Settings | Editor | Inspection Settings | Inspection Severity now names the group and the inspection, instead of an internal model reference.</li>
+              <li>Rider: the path to an inspection under Settings | Editor | Inspection Settings | Inspection Severity now names the group and the inspection. It used to carry the internal model reference the inspection tree holds, such as "InspectionSeverityGroupModel: `RiderBackend 0.SettingsViewModel...`".</li>
             </ul>
         """
     }
