@@ -108,6 +108,7 @@ intellijPlatform {
         changeNotes = """
             <ul>
               <li>The path now names the group a setting belongs to, such as "Sync external changes:" or "When tabs exceed the limit:". A group written as a title above indented checkboxes or radio buttons was missing from the path.</li>
+              <li>Rider: the path to an inspection under Settings | Editor | Inspection Settings | Inspection Severity now names the group and the inspection, instead of an internal model reference.</li>
             </ul>
         """
     }

@@ -201,7 +201,8 @@ object TreeTablePathExtractor {
             }
 
             // Try to get display name via reflection on userObject (handles InlayGroup.title(), etc.)
-            extractDisplayNameViaReflection(userObject)?.let { return it }
+            extractDisplayNameViaReflection(userObject, "getGroupName", "getInspectionName")
+                ?.let { return it }
 
             // Check if node has a custom toString() override (like ColorOptionsTree.MyTreeNode)
             // If node.toString() differs from userObject.toString(), use node's version
